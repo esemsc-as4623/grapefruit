@@ -131,7 +131,7 @@ jobs:
           echo "ENCRYPTION_KEY=$(openssl rand -hex 32)" >> .env
 
       - name: Start services
-        run: docker-compose up -d
+        run: docker compose up -d
 
       - name: Wait for services
         run: |
@@ -150,9 +150,9 @@ jobs:
       - name: View logs on failure
         if: failure()
         run: |
-          docker-compose logs backend
-          docker-compose logs postgres
+          docker compose logs backend
+          docker compose logs postgres
 
       - name: Cleanup
         if: always()
-        run: docker-compose down -v
+        run: docker compose down -v
