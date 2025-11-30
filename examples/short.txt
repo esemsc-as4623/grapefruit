@@ -1,0 +1,9 @@
+GROCER EXPRESS
+02/12/25  7:22PM
+
+MILK         3.79
+EGGS         2.49
+BREAD        2.29
+
+TOTAL        8.57
+CASH

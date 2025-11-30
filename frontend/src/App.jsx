@@ -4,7 +4,9 @@ import InventoryDashboard from './components/InventoryDashboard';
 import CartReview from './components/CartReview';
 import PreferencesPanel from './components/PreferencesPanel';
 import ManualEntry from './components/ManualEntry';
-import { Package, ShoppingCart, Settings, Plus, Home as HomeIcon } from 'lucide-react';
+import ReceiptUpload from './components/ReceiptUpload';
+import ReceiptReview from './components/ReceiptReview';
+import { Package, ShoppingCart, Settings, Plus, Home as HomeIcon, Receipt } from 'lucide-react';
 
 // Navigation component
 const Navigation = () => {
@@ -190,8 +192,28 @@ const HomePage = () => {
   );
 };
 
-// Add Item Page (combines ManualEntry with future ReceiptUpload)
+// Add Item Page (combines ManualEntry with ReceiptUpload)
 const AddItemPage = () => {
+  const [receiptData, setReceiptData] = useState(null);
+  const [showReview, setShowReview] = useState(false);
+
+  const handleReceiptParsed = (data) => {
+    setReceiptData(data);
+    setShowReview(true);
+  };
+
+  const handleApplied = (result) => {
+    alert(`Successfully applied! ${result.created_count} items created, ${result.updated_count} items updated.`);
+    setShowReview(false);
+    setReceiptData(null);
+    // Optionally refresh inventory
+  };
+
+  const handleCancel = () => {
+    setShowReview(false);
+    setReceiptData(null);
+  };
+
   const handleItemAdded = () => {
     // Future: Could refresh a list of recently added items
     console.log('Item added successfully');
@@ -201,23 +223,23 @@ const AddItemPage = () => {
     <div className="space-y-6">
       <div>
         <h2 className="text-3xl font-bold text-gray-900">Add Items</h2>
-        <p className="text-gray-600 mt-1">Add items to your inventory</p>
+        <p className="text-gray-600 mt-1">Add items to your inventory manually or via receipt</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <ManualEntry onItemAdded={handleItemAdded} />
-        
-        {/* Placeholder for future ReceiptUpload component */}
-        <div className="bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg p-8 flex flex-col items-center justify-center text-center">
-          <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mb-4">
-            <Plus className="w-8 h-8 text-gray-400" />
-          </div>
-          <h3 className="text-lg font-semibold text-gray-700 mb-2">Receipt Upload</h3>
-          <p className="text-sm text-gray-500">
-            OCR receipt scanning coming soon!
-          </p>
+      {showReview && receiptData ? (
+        // Show receipt review when items are parsed
+        <ReceiptReview 
+          receiptData={receiptData}
+          onApplied={handleApplied}
+          onCancel={handleCancel}
+        />
+      ) : (
+        // Show upload options
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <ManualEntry onItemAdded={handleItemAdded} />
+          <ReceiptUpload onReceiptParsed={handleReceiptParsed} />
         </div>
-      </div>
+      )}
     </div>
   );
 };

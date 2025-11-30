@@ -1,0 +1,35 @@
+AMAZON FRESH — ORDER SUMMARY
+ORDER ID: AF-41298-58213
+DELIVERY ADDRESS:
+  789 GREENVIEW LN
+  SAN MATEO, CA 94401
+
+----------------------------------------
+ORDER DATE: FEB 14, 2025    TIME: 11:06 AM
+DELIVERY WINDOW: 1 PM – 3 PM
+----------------------------------------
+
+ITEM                                   QTY    PRICE
+----------------------------------------
+Amazon Fresh Whole Milk 1 Gallon        1     $3.69
+Happy Farm Organic Eggs 12ct            1     $4.49
+Bananas (2.10 LB @ $0.72/LB)            2.10  $1.51
+Fresh Chicken Breast (1.74 LB)          1.74  $8.36
+Dave's Killer Bread Organic              1     $5.49
+Kettle Sea Salt Chips 13oz               1     $4.29
+Fresh Roma Tomatoes 1.20 LB             1.20  $2.82
+Fresh Spinach Bag 10oz                   1     $3.49
+Rao's Marinara Sauce 24oz                 1     $6.19
+Lavazza Coffee Ground 12oz               1     $7.99
+
+----------------------------------------
+ITEM SUBTOTAL                          $48.32
+DELIVERY FEE                            $3.95
+TAX (8.75%)                              $4.29
+TOTAL                                   $56.56
+----------------------------------------
+
+PAID VIA: AMAZON ACCOUNT BALANCE
+TRANSACTION ID: 1183-552892-12844
+
+THANK YOU FOR CHOOSING AMAZON FRESH!

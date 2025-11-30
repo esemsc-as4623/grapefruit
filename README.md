@@ -21,6 +21,9 @@ curl http://localhost:5000/inventory
 
 # Start the frontend
 ./scripts/start-frontend.sh
+
+# (optional) Reseed demo
+cat database/seed.sql | docker exec -i grapefruit-db psql -U grapefruit -d grapefruit
 ```
 
 ---

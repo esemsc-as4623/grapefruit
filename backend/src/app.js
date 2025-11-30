@@ -4,6 +4,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const routes = require('./routes/index');
 const simulationRoutes = require('./routes/simulation');
+const receiptRoutes = require('./routes/receipts');
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 const logger = require('./utils/logger');
 
@@ -27,8 +28,24 @@ app.use(morgan('combined', {
 // ============================================
 // ROUTES
 // ============================================
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    service: 'grapefruit-backend',
+    llm: {
+      configured: !!process.env.ASI_API_KEY,
+      model: process.env.ASI_MODEL || 'asi1-mini'
+    }
+  });
+});
+
+// API routes
 app.use('/', routes);
 app.use('/simulate', simulationRoutes);
+app.use('/receipts', receiptRoutes);
 
 // ============================================
 // ERROR HANDLING

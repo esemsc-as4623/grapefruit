@@ -1,0 +1,34 @@
+Subject: Your Walmart Grocery Order is Complete
+From: Walmart Grocery <orders@walmart.com>
+To: customer@example.com
+Date: Feb 14, 2025 3:12 PM
+
+-----------------------------------------------------------
+Order #WM-774129483
+Pickup Date: Feb 14, 2025 at 3:00 PM
+Pickup Location: Walmart Supercenter #1841
+-----------------------------------------------------------
+
+Items Purchased:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Great Value Whole Milk 1gal  
+Qty: 2                                      $6.38
+
+Marketside Large Eggs 18ct  
+Qty: 1                                      $3.78
+
+Fresh Chicken Breast (2.10lb @ $4.20/lb)  
+Qty: 1                                      $8.82
+
+Great Value Wheat Bread  
+Qty: 1                                      $1.48
+
+Bananas (2.40lb @ $0.58/lb)  
+Qty: 1                                      $1.39
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Subtotal:                                   $21.85
+Tax (8.25%):                                 $1.80
+TOTAL:                                      $23.65
+
+Thank you for shopping with Walmart Grocery!

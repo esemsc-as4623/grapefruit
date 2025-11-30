@@ -1,0 +1,289 @@
+import React, { useState } from 'react';
+import { Upload, FileText, AlertCircle, Check, Loader } from 'lucide-react';
+
+const ReceiptUpload = ({ onReceiptParsed }) => {
+  const [receiptText, setReceiptText] = useState('');
+  const [file, setFile] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
+  const [uploadMode, setUploadMode] = useState('text'); // 'text' or 'file'
+
+  // Handle text input
+  const handleTextChange = (e) => {
+    setReceiptText(e.target.value);
+    setError(null);
+  };
+
+  // Handle file selection
+  const handleFileChange = (e) => {
+    const selectedFile = e.target.files[0];
+    if (selectedFile) {
+      // Check file type
+      const allowedTypes = ['text/plain', 'text/markdown'];
+      if (!allowedTypes.includes(selectedFile.type) && !selectedFile.name.match(/\.(txt|md)$/i)) {
+        setError('Please upload a .txt or .md file');
+        return;
+      }
+      
+      setFile(selectedFile);
+      setError(null);
+      
+      // Read file content to display preview
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setReceiptText(event.target.result);
+      };
+      reader.readAsText(selectedFile);
+    }
+  };
+
+  // Handle drag and drop
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const droppedFile = e.dataTransfer.files[0];
+    if (droppedFile) {
+      handleFileChange({ target: { files: [droppedFile] } });
+    }
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  // Upload and parse receipt
+  const handleUpload = async () => {
+    if (!receiptText.trim()) {
+      setError('Please enter or upload receipt text');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+      setSuccess(null);
+
+      // Step 1: Upload receipt
+      const uploadResponse = await fetch('http://localhost:5000/receipts/upload', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: receiptText,
+        }),
+      });
+
+      if (!uploadResponse.ok) {
+        const errorData = await uploadResponse.json();
+        throw new Error(errorData.error?.message || 'Failed to upload receipt');
+      }
+
+      const uploadData = await uploadResponse.json();
+      const receiptId = uploadData.receipt_id;
+
+      setSuccess(`Receipt uploaded! Processing...`);
+
+      // Step 2: Parse receipt
+      const parseResponse = await fetch(`http://localhost:5000/receipts/${receiptId}/parse`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          use_llm: false, // Set to true when LLM is available
+          min_confidence: 0.5,
+          filter_non_grocery: true,
+        }),
+      });
+
+      if (!parseResponse.ok) {
+        const errorData = await parseResponse.json();
+        throw new Error(errorData.error?.message || 'Failed to parse receipt');
+      }
+
+      const parseData = await parseResponse.json();
+
+      setSuccess(`Parsed ${parseData.items.length} items successfully!`);
+
+      // Notify parent component with parsed data
+      if (onReceiptParsed) {
+        onReceiptParsed({
+          receiptId,
+          items: parseData.items,
+          needsReview: parseData.needs_review,
+          stats: parseData.stats,
+          metadata: uploadData.metadata,
+        });
+      }
+
+      // Clear form
+      setTimeout(() => {
+        setReceiptText('');
+        setFile(null);
+        setSuccess(null);
+      }, 2000);
+
+    } catch (err) {
+      setError(err.message || 'Failed to process receipt');
+      console.error('Error processing receipt:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg p-6">
+      <div className="flex items-center gap-2 mb-6">
+        <Upload className="w-5 h-5 text-grapefruit-500" />
+        <h3 className="text-lg font-semibold text-gray-900">Upload Receipt</h3>
+      </div>
+
+      {/* Upload Mode Toggle */}
+      <div className="flex gap-2 mb-4">
+        <button
+          onClick={() => setUploadMode('text')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            uploadMode === 'text'
+              ? 'bg-grapefruit-500 text-white'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          <FileText className="w-4 h-4 inline mr-1" />
+          Paste Text
+        </button>
+        <button
+          onClick={() => setUploadMode('file')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            uploadMode === 'file'
+              ? 'bg-grapefruit-500 text-white'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          <Upload className="w-4 h-4 inline mr-1" />
+          Upload File
+        </button>
+      </div>
+
+      {/* Error Message */}
+      {error && (
+        <div className="mb-4 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg flex items-center gap-2">
+          <AlertCircle className="w-5 h-5 flex-shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {/* Success Message */}
+      {success && (
+        <div className="mb-4 bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg flex items-center gap-2">
+          <Check className="w-5 h-5 flex-shrink-0" />
+          <span>{success}</span>
+        </div>
+      )}
+
+      {/* Text Input Mode */}
+      {uploadMode === 'text' && (
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Receipt Text
+          </label>
+          <textarea
+            value={receiptText}
+            onChange={handleTextChange}
+            placeholder="Paste your receipt text here..."
+            rows={12}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-grapefruit-500 focus:border-transparent font-mono text-sm"
+          />
+          <p className="mt-1 text-xs text-gray-500">
+            Copy and paste receipt text from your email or PDF
+          </p>
+        </div>
+      )}
+
+      {/* File Upload Mode */}
+      {uploadMode === 'file' && (
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Upload File (.txt or .md)
+          </label>
+          <div
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+            className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-grapefruit-500 transition-colors cursor-pointer"
+          >
+            <input
+              type="file"
+              accept=".txt,.md,text/plain,text/markdown"
+              onChange={handleFileChange}
+              className="hidden"
+              id="file-upload"
+            />
+            <label htmlFor="file-upload" className="cursor-pointer">
+              <Upload className="w-12 h-12 mx-auto text-gray-400 mb-3" />
+              <p className="text-sm text-gray-600">
+                {file ? (
+                  <span className="font-medium text-grapefruit-600">{file.name}</span>
+                ) : (
+                  <>
+                    <span className="font-medium text-grapefruit-600">Click to upload</span>
+                    {' or drag and drop'}
+                  </>
+                )}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                TXT or MD files only
+              </p>
+            </label>
+          </div>
+          
+          {/* File Preview */}
+          {receiptText && (
+            <div className="mt-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Preview
+              </label>
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 max-h-64 overflow-y-auto">
+                <pre className="text-xs font-mono text-gray-700 whitespace-pre-wrap">
+                  {receiptText}
+                </pre>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Upload Button */}
+      <button
+        onClick={handleUpload}
+        disabled={loading || !receiptText.trim()}
+        className={`w-full py-3 px-4 rounded-lg font-medium transition-colors ${
+          loading || !receiptText.trim()
+            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+            : 'bg-grapefruit-500 text-white hover:bg-grapefruit-600'
+        }`}
+      >
+        {loading ? (
+          <span className="flex items-center justify-center gap-2">
+            <Loader className="w-5 h-5 animate-spin" />
+            Processing Receipt...
+          </span>
+        ) : (
+          'Parse Receipt'
+        )}
+      </button>
+
+      {/* Info Box */}
+      <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
+        <p className="text-sm text-blue-800">
+          <strong>Tip:</strong> For best results, use receipt text files from your examples folder
+          or copy-paste from email confirmations.
+        </p>
+      </div>
+    </div>
+  );
+};
+
+export default ReceiptUpload;

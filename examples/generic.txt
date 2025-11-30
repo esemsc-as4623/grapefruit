@@ -1,0 +1,38 @@
+FRESH MART SUPERMARKET
+1234 MARKET STREET
+SPRINGFIELD, CA 90210
+TEL: (555) 123-9876
+
+----------------------------------------
+DATE: 2025-02-14   TIME: 03:47 PM
+CASHIER: ALEX R.
+ORDER #: 582193
+----------------------------------------
+
+ITEM                        QTY    PRICE
+----------------------------------------
+MILK 2% GALLON               1     $3.79
+EGGS LARGE DOZEN             1     $2.49
+BANANAS (2.31 LB @ 0.59/LB)  2.31  $1.36
+CHICKEN BREAST (1.82 LB)     1.82  $7.41
+BREAD WHOLE WHEAT            1     $2.29
+POTATO CHIPS SEA SALT        1     $3.49
+TOMATOES ROMA (1.10 LB)      1.10  $1.98
+SPINACH BAG 10OZ             1     $2.99
+PASTA SPAGHETTI 16OZ         1     $1.79
+MARINARA SAUCE 24OZ          1     $2.89
+COFFEE GROUNDS 12OZ          1     $5.99
+YOGURT PLAIN 32OZ            1     $3.59
+
+----------------------------------------
+SUBTOTAL                           $40.06
+TAX (8.0%)                          $3.20
+TOTAL                              $43.26
+----------------------------------------
+
+PAYMENT METHOD: VISA •••• 4421
+AUTH CODE: 817392
+LOYALTY ID: **** **** 2914
+
+THANK YOU FOR SHOPPING WITH US!
+SAVE $2 NEXT VISIT WITH CODE: FM4829
