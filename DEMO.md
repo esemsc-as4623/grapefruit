@@ -19,7 +19,7 @@
 ### Step 1: Start Services
 ```bash
 # Navigate to project
-cd /Users/as4623/grapefruit
+cd grapefruit
 
 # Start Docker services
 docker-compose up -d
