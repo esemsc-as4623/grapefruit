@@ -8,27 +8,37 @@ echo "🍊 Grapefruit Frontend Startup"
 echo "=============================="
 echo ""
 
+# Check for Docker (handle macOS Docker Desktop installation)
+if command -v docker &> /dev/null; then
+    DOCKER_CMD="docker"
+elif [ -f "/Applications/Docker.app/Contents/Resources/bin/docker" ]; then
+    DOCKER_CMD="/Applications/Docker.app/Contents/Resources/bin/docker"
+    echo "ℹ️  Using Docker from Docker Desktop application"
+else
+    echo "❌ Docker not found. Please install Docker Desktop first."
+    echo "   Download from: https://www.docker.com/products/docker-desktop"
+    exit 1
+fi
+
+# Check for Docker Compose (V2 or V1)
+if $DOCKER_CMD compose version &> /dev/null; then
+    DOCKER_COMPOSE="$DOCKER_CMD compose"
+    echo "✅ Docker Compose V2 found"
+elif command -v docker-compose &> /dev/null; then
+    DOCKER_COMPOSE="docker-compose"
+    echo "✅ Docker Compose V1 found"
+else
+    echo "❌ Docker Compose not found. Please install Docker Compose first."
+    exit 1
+fi
+
+echo "✅ Docker found"
+
 # Colors
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
-
-# Check if we're in the right directory
-if [ ! -f "docker-compose.yml" ]; then
-    echo "❌ Error: Please run this script from the project root directory"
-    exit 1
-fi
-
-# Check for Docker Compose
-if docker compose version &> /dev/null; then
-    DOCKER_COMPOSE="docker compose"
-elif command -v docker-compose &> /dev/null; then
-    DOCKER_COMPOSE="docker-compose"
-else
-    echo "❌ Docker Compose not found. Please install Docker Compose first."
-    exit 1
-fi
 
 echo "1️⃣  Checking backend services..."
 if ! $DOCKER_COMPOSE ps | grep -q "grapefruit-backend.*Up"; then

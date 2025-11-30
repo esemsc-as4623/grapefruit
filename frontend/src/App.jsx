@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import InventoryDashboard from './components/InventoryDashboard';
 import CartReview from './components/CartReview';
@@ -88,7 +88,7 @@ const Navigation = () => {
 };
 
 // Home/Landing component
-const Home = () => {
+const HomePage = () => {
   return (
     <div className="space-y-8">
       {/* Hero Section */}
@@ -192,10 +192,9 @@ const Home = () => {
 
 // Add Item Page (combines ManualEntry with future ReceiptUpload)
 const AddItemPage = () => {
-  const [refreshKey, setRefreshKey] = useState(0);
-
   const handleItemAdded = () => {
-    setRefreshKey((prev) => prev + 1);
+    // Future: Could refresh a list of recently added items
+    console.log('Item added successfully');
   };
 
   return (
@@ -232,7 +231,7 @@ function App() {
         
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Routes>
-            <Route path="/" element={<Home />} />
+            <Route path="/" element={<HomePage />} />
             <Route path="/inventory" element={<InventoryDashboard />} />
             <Route path="/orders" element={<CartReview />} />
             <Route path="/add" element={<AddItemPage />} />

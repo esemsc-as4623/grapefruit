@@ -8,15 +8,21 @@ echo "🍊 Grapefruit Setup Script"
 echo "=========================="
 echo ""
 
-# Check for Docker
-if ! command -v docker &> /dev/null; then
-    echo "❌ Docker not found. Please install Docker first."
+# Check for Docker (handle macOS Docker Desktop installation)
+if command -v docker &> /dev/null; then
+    DOCKER_CMD="docker"
+elif [ -f "/Applications/Docker.app/Contents/Resources/bin/docker" ]; then
+    DOCKER_CMD="/Applications/Docker.app/Contents/Resources/bin/docker"
+    echo "ℹ️  Using Docker from Docker Desktop application"
+else
+    echo "❌ Docker not found. Please install Docker Desktop first."
+    echo "   Download from: https://www.docker.com/products/docker-desktop"
     exit 1
 fi
 
 # Check for Docker Compose (V2 or V1)
-if docker compose version &> /dev/null; then
-    DOCKER_COMPOSE="docker compose"
+if $DOCKER_CMD compose version &> /dev/null; then
+    DOCKER_COMPOSE="$DOCKER_CMD compose"
     echo "✅ Docker Compose V2 found"
 elif command -v docker-compose &> /dev/null; then
     DOCKER_COMPOSE="docker-compose"
