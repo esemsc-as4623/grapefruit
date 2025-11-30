@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { inventoryAPI, simulationAPI } from '../services/api';
-import { Package, AlertTriangle, TrendingDown, Calendar, RefreshCw } from 'lucide-react';
+import { Package, AlertTriangle, TrendingDown, Calendar, RefreshCw, Trash2, ShoppingCart, Sliders } from 'lucide-react';
 
 const InventoryDashboard = () => {
   const location = useLocation();
@@ -11,6 +11,7 @@ const InventoryDashboard = () => {
   const [error, setError] = useState(null);
   const [simulating, setSimulating] = useState(false);
   const [sortBy, setSortBy] = useState(location.state?.sortBy || 'days'); // Default to 'days', then 'oldest', then 'category'
+  const [hoveredItem, setHoveredItem] = useState(null);
 
   // Load inventory data
   const loadInventory = async () => {
@@ -268,8 +269,34 @@ const InventoryDashboard = () => {
             return (
               <div
                 key={item.id}
-                className={`${categoryInfo.color} border-2 ${statusColor.split(' ')[1]} rounded-lg p-4 hover:shadow-md transition-shadow`}
+                className={`relative ${categoryInfo.color} border-2 ${statusColor.split(' ')[1]} rounded-lg p-4 hover:shadow-md transition-all group`}
+                onMouseEnter={() => setHoveredItem(item.id)}
+                onMouseLeave={() => setHoveredItem(null)}
               >
+                {/* Action Icons - appear on hover */}
+                {hoveredItem === item.id && (
+                  <div className="absolute top-2 right-2 flex gap-2 bg-white rounded-lg shadow-lg p-2 border border-gray-200">
+                    <button
+                      className="p-2 hover:bg-red-50 rounded transition-colors"
+                      title="Remove from inventory"
+                    >
+                      <Trash2 className="w-4 h-4 text-red-600" />
+                    </button>
+                    <button
+                      className="p-2 hover:bg-blue-50 rounded transition-colors"
+                      title="Add to cart"
+                    >
+                      <ShoppingCart className="w-4 h-4 text-blue-600" />
+                    </button>
+                    <button
+                      className="p-2 hover:bg-orange-50 rounded transition-colors"
+                      title="Deplete item"
+                    >
+                      <Sliders className="w-4 h-4 text-orange-600 rotate-90" />
+                    </button>
+                  </div>
+                )}
+
                 {/* Header with quantity on the right */}
                 <div className="flex justify-between items-start mb-3">
                   <div className="flex items-center gap-2">
