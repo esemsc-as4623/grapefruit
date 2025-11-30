@@ -175,11 +175,6 @@ grapefruit/
 │   ├── discounts.txt
 │   └── ... (9+ receipt examples)
 │
-├── scripts/                  # ✅ Setup utilities
-│   ├── setup.sh
-│   ├── start-frontend.sh
-│   └── verify-implementation.sh
-│
 └── docs/                     # ✅ Documentation
     ├── API.md                # ✅ API endpoints reference
     ├── QUICKSTART.md
