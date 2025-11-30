@@ -415,12 +415,65 @@ describe('Inventory Item Addition', () => {
   // ============================================
 
   describe('Duplicate Item Handling', () => {
-    test('should prevent duplicate items with same name for same user', async () => {
+    test('should add quantity to existing item instead of creating duplicate', async () => {
       const itemData = {
-        item_name: 'Duplicate Test Milk',
-        quantity: 1.0,
+        item_name: `Auto-Update Bananas ${Date.now()}`,
+        quantity: 2,
+        unit: 'count',
+        category: 'produce',
+        average_daily_consumption: 1.0,
+      };
+
+      // Create first item
+      const firstResponse = await request(app)
+        .post('/inventory')
+        .send(itemData)
+        .expect(201);
+
+      const itemId = firstResponse.body.id;
+      createdItemIds.push(itemId);
+
+      expect(parseFloat(firstResponse.body.quantity)).toBe(2);
+
+      // Add more of the same item
+      const addMoreData = {
+        item_name: itemData.item_name,
+        quantity: 6, // Adding 6 more
+        unit: 'count',
+        category: 'produce',
+        average_daily_consumption: 1.0,
+      };
+
+      const secondResponse = await request(app)
+        .post('/inventory')
+        .send(addMoreData)
+        .expect(200); // Should return 200 for update
+
+      // Should be the same item ID
+      expect(secondResponse.body.id).toBe(itemId);
+      
+      // Quantity should be 2 + 6 = 8
+      expect(parseFloat(secondResponse.body.quantity)).toBe(8);
+      
+      // Should include message about addition
+      expect(secondResponse.body.message).toMatch(/added to existing/i);
+      expect(parseFloat(secondResponse.body.added_quantity)).toBe(6);
+
+      // Verify by retrieving the item
+      const getResponse = await request(app)
+        .get(`/inventory/${itemId}`)
+        .expect(200);
+
+      expect(parseFloat(getResponse.body.quantity)).toBe(8);
+    });
+
+    test('should recalculate predicted runout when adding to existing item', async () => {
+      const itemData = {
+        item_name: `Runout Calc Milk ${Date.now()}`,
+        quantity: 1.0, // 1 gallon
         unit: 'gallon',
         category: 'dairy',
+        average_daily_consumption: 0.5, // 0.5 gallon/day = 2 days
       };
 
       // Create first item
@@ -431,13 +484,235 @@ describe('Inventory Item Addition', () => {
 
       createdItemIds.push(firstResponse.body.id);
 
-      // Try to create duplicate
+      const firstRunout = new Date(firstResponse.body.predicted_runout);
+
+      // Add more milk
+      const addMoreData = {
+        ...itemData,
+        quantity: 2.0, // Adding 2 more gallons (total becomes 3)
+      };
+
       const secondResponse = await request(app)
         .post('/inventory')
-        .send(itemData)
-        .expect(409); // Should fail with conflict status
+        .send(addMoreData)
+        .expect(200);
 
-      expect(secondResponse.body).toHaveProperty('error');
+      expect(parseFloat(secondResponse.body.quantity)).toBe(3.0);
+
+      // New runout should be ~6 days from now (3 gallons / 0.5 per day)
+      const newRunout = new Date(secondResponse.body.predicted_runout);
+      const expectedRunout = new Date(Date.now() + 6 * 24 * 60 * 60 * 1000);
+
+      // New runout should be later than first runout
+      expect(newRunout.getTime()).toBeGreaterThan(firstRunout.getTime());
+      
+      // Should be approximately 6 days from now
+      const timeDiff = Math.abs(newRunout - expectedRunout);
+      expect(timeDiff).toBeLessThan(60 * 60 * 1000); // Within 1 hour
+    });
+
+    test('should update consumption rate if provided when adding to existing item', async () => {
+      const itemData = {
+        item_name: `Rate Update Coffee ${Date.now()}`,
+        quantity: 0.5,
+        unit: 'lb',
+        category: 'beverages',
+        average_daily_consumption: 0.1, // Initial rate
+      };
+
+      // Create first item
+      const firstResponse = await request(app)
+        .post('/inventory')
+        .send(itemData)
+        .expect(201);
+
+      createdItemIds.push(firstResponse.body.id);
+
+      expect(parseFloat(firstResponse.body.average_daily_consumption)).toBe(0.1);
+
+      // Add more with updated consumption rate
+      const addMoreData = {
+        item_name: itemData.item_name,
+        quantity: 0.5,
+        unit: 'lb',
+        category: 'beverages',
+        average_daily_consumption: 0.2, // Updated rate
+      };
+
+      const secondResponse = await request(app)
+        .post('/inventory')
+        .send(addMoreData)
+        .expect(200);
+
+      expect(parseFloat(secondResponse.body.quantity)).toBe(1.0);
+      expect(parseFloat(secondResponse.body.average_daily_consumption)).toBe(0.2);
+
+      // Runout should be calculated with new rate: 1.0 / 0.2 = 5 days
+      const runoutDate = new Date(secondResponse.body.predicted_runout);
+      const expectedRunout = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000);
+      
+      const timeDiff = Math.abs(runoutDate - expectedRunout);
+      expect(timeDiff).toBeLessThan(60 * 60 * 1000);
+    });
+
+    test('should handle adding to item without initial consumption rate', async () => {
+      const itemData = {
+        item_name: `No Rate Item ${Date.now()}`,
+        quantity: 5,
+        unit: 'count',
+        category: 'pantry',
+        // No average_daily_consumption initially
+      };
+
+      // Create first item
+      const firstResponse = await request(app)
+        .post('/inventory')
+        .send(itemData)
+        .expect(201);
+
+      createdItemIds.push(firstResponse.body.id);
+
+      // Add more with consumption rate now
+      const addMoreData = {
+        item_name: itemData.item_name,
+        quantity: 3,
+        unit: 'count',
+        category: 'pantry',
+        average_daily_consumption: 2.0,
+      };
+
+      const secondResponse = await request(app)
+        .post('/inventory')
+        .send(addMoreData)
+        .expect(200);
+
+      expect(parseFloat(secondResponse.body.quantity)).toBe(8);
+      expect(parseFloat(secondResponse.body.average_daily_consumption)).toBe(2.0);
+
+      // Should now have a predicted runout: 8 / 2 = 4 days
+      expect(secondResponse.body.predicted_runout).toBeTruthy();
+    });
+
+    test('should update last_purchase_date when adding to existing item', async () => {
+      const itemData = {
+        item_name: `Purchase Date Test ${Date.now()}`,
+        quantity: 2,
+        unit: 'lb',
+        category: 'produce',
+      };
+
+      // Create first item
+      const firstResponse = await request(app)
+        .post('/inventory')
+        .send(itemData)
+        .expect(201);
+
+      createdItemIds.push(firstResponse.body.id);
+
+      const firstPurchaseDate = new Date(firstResponse.body.last_purchase_date || firstResponse.body.created_at);
+
+      // Wait a moment to ensure timestamps are different
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Add more
+      const addMoreData = {
+        item_name: itemData.item_name,
+        quantity: 1,
+        unit: 'lb',
+        category: 'produce',
+      };
+
+      const secondResponse = await request(app)
+        .post('/inventory')
+        .send(addMoreData)
+        .expect(200);
+
+      const secondPurchaseDate = new Date(secondResponse.body.last_purchase_date);
+
+      // Last purchase date should be updated
+      expect(secondPurchaseDate.getTime()).toBeGreaterThanOrEqual(firstPurchaseDate.getTime());
+    });
+
+    test('should track last_purchase_quantity when adding to existing item', async () => {
+      const itemData = {
+        item_name: `Purchase Qty Test ${Date.now()}`,
+        quantity: 10,
+        unit: 'oz',
+        category: 'pantry',
+      };
+
+      // Create first item
+      const firstResponse = await request(app)
+        .post('/inventory')
+        .send(itemData)
+        .expect(201);
+
+      createdItemIds.push(firstResponse.body.id);
+
+      // Add more
+      const addMoreData = {
+        item_name: itemData.item_name,
+        quantity: 5, // Adding 5 oz
+        unit: 'oz',
+        category: 'pantry',
+      };
+
+      const secondResponse = await request(app)
+        .post('/inventory')
+        .send(addMoreData)
+        .expect(200);
+
+      expect(parseFloat(secondResponse.body.quantity)).toBe(15);
+      expect(parseFloat(secondResponse.body.last_purchase_quantity)).toBe(5);
+    });
+
+    test('should handle multiple sequential additions to same item', async () => {
+      const itemName = `Multi Add Item ${Date.now()}`;
+      
+      // First addition
+      const first = await request(app)
+        .post('/inventory')
+        .send({
+          item_name: itemName,
+          quantity: 2,
+          unit: 'count',
+          category: 'produce',
+          average_daily_consumption: 1.0,
+        })
+        .expect(201);
+
+      createdItemIds.push(first.body.id);
+      expect(parseFloat(first.body.quantity)).toBe(2);
+
+      // Second addition
+      const second = await request(app)
+        .post('/inventory')
+        .send({
+          item_name: itemName,
+          quantity: 3,
+          unit: 'count',
+          category: 'produce',
+        })
+        .expect(200);
+
+      expect(parseFloat(second.body.quantity)).toBe(5);
+
+      // Third addition
+      const third = await request(app)
+        .post('/inventory')
+        .send({
+          item_name: itemName,
+          quantity: 1,
+          unit: 'count',
+          category: 'produce',
+        })
+        .expect(200);
+
+      expect(parseFloat(third.body.quantity)).toBe(6);
+
+      // All should have the same ID
+      expect(second.body.id).toBe(first.body.id);
+      expect(third.body.id).toBe(first.body.id);
     });
   });
 

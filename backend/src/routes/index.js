@@ -128,7 +128,7 @@ router.get('/inventory/:id', validateUUID('id'), async (req, res, next) => {
 
 /**
  * POST /inventory
- * Add new inventory item
+ * Add new inventory item or add quantity to existing item
  */
 router.post('/inventory', async (req, res, next) => {
   try {
@@ -137,9 +137,31 @@ router.post('/inventory', async (req, res, next) => {
       return res.status(400).json({ error: { message: error.details[0].message } });
     }
     
+    const userId = req.body.user_id || 'demo_user';
+    
+    // Check if item already exists
+    const existingItem = await Inventory.findByName(userId, value.item_name);
+    
+    if (existingItem) {
+      // Add to existing quantity
+      const updatedItem = await Inventory.addQuantity(
+        existingItem.id,
+        value.quantity,
+        value.average_daily_consumption || null
+      );
+      
+      logger.info(`Inventory item updated (quantity added): ${updatedItem.id}`);
+      return res.status(200).json({
+        ...updatedItem,
+        message: 'Quantity added to existing item',
+        added_quantity: value.quantity,
+      });
+    }
+    
+    // Create new item
     const item = await Inventory.create({
       ...value,
-      user_id: req.body.user_id || 'demo_user',
+      user_id: userId,
     });
     
     logger.info(`Inventory item created: ${item.id}`);

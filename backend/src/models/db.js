@@ -55,6 +55,22 @@ class Inventory {
   }
 
   /**
+   * Find item by name and user
+   */
+  static async findByName(userId, itemName) {
+    try {
+      const result = await db.query(
+        'SELECT * FROM inventory WHERE user_id = $1 AND item_name = $2',
+        [userId, itemName]
+      );
+      return result.rows[0];
+    } catch (error) {
+      logger.error('Error fetching item by name:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Create new inventory item
    */
   static async create(itemData) {
@@ -141,6 +157,63 @@ class Inventory {
       return result.rows[0];
     } catch (error) {
       logger.error('Error updating consumption:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Add quantity to existing item and recalculate runout date
+   */
+  static async addQuantity(id, additionalQuantity, averageDailyConsumption = null) {
+    try {
+      // Get current item to access current quantity and consumption rate
+      const current = await this.findById(id);
+      if (!current) {
+        throw new Error('Item not found');
+      }
+
+      const newQuantity = parseFloat(current.quantity) + parseFloat(additionalQuantity);
+      const consumptionRate = averageDailyConsumption !== null 
+        ? averageDailyConsumption 
+        : parseFloat(current.average_daily_consumption);
+
+      // Calculate new predicted runout if we have a consumption rate
+      let predictedRunout = null;
+      if (consumptionRate && consumptionRate > 0) {
+        const daysUntilRunout = newQuantity / consumptionRate;
+        const runoutDate = new Date();
+        runoutDate.setDate(runoutDate.getDate() + daysUntilRunout);
+        predictedRunout = runoutDate;
+      }
+
+      // Update the item
+      const updateFields = {
+        quantity: newQuantity,
+        last_purchase_date: new Date(),
+        last_purchase_quantity: additionalQuantity,
+      };
+
+      if (averageDailyConsumption !== null) {
+        updateFields.average_daily_consumption = averageDailyConsumption;
+      }
+
+      if (predictedRunout) {
+        updateFields.predicted_runout = predictedRunout;
+      }
+
+      const setClause = Object.keys(updateFields)
+        .map((field, idx) => `${field} = $${idx + 2}`)
+        .join(', ');
+      const values = [id, ...Object.values(updateFields)];
+
+      const result = await db.query(
+        `UPDATE inventory SET ${setClause}, last_updated = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *`,
+        values
+      );
+
+      return result.rows[0];
+    } catch (error) {
+      logger.error('Error adding quantity to inventory item:', error);
       throw error;
     }
   }
