@@ -55,6 +55,23 @@ class Inventory {
   }
 
   /**
+   * Find item by name and unit for a user
+   * Used for matching receipt items to existing inventory
+   */
+  static async findByNameAndUnit(userId, itemName, unit) {
+    try {
+      const result = await db.query(
+        'SELECT * FROM inventory WHERE user_id = $1 AND LOWER(item_name) = LOWER($2) AND unit = $3',
+        [userId, itemName, unit]
+      );
+      return result.rows[0];
+    } catch (error) {
+      logger.error('Error fetching item by name and unit:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Create new inventory item
    */
   static async create(itemData) {

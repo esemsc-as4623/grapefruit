@@ -150,6 +150,109 @@ router.post('/inventory', async (req, res, next) => {
 });
 
 /**
+ * POST /inventory/bulk
+ * Add or update multiple inventory items
+ * Body: { items: Array<InventoryItem>, mode: 'create' | 'update' | 'upsert' }
+ */
+router.post('/inventory/bulk', async (req, res, next) => {
+  try {
+    const { items, mode = 'create' } = req.body;
+    const userId = req.body.user_id || 'demo_user';
+    
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({
+        error: { message: 'items array is required and must not be empty' }
+      });
+    }
+    
+    const results = {
+      created: [],
+      updated: [],
+      errors: [],
+    };
+    
+    for (const item of items) {
+      try {
+        // Validate item
+        const { error, value } = inventorySchema.validate(item);
+        if (error) {
+          results.errors.push({
+            item,
+            error: error.details[0].message,
+          });
+          continue;
+        }
+        
+        // Handle different modes
+        if (mode === 'create') {
+          const created = await Inventory.create({
+            ...value,
+            user_id: userId,
+          });
+          results.created.push(created);
+        } else if (mode === 'update' && item.id) {
+          const updated = await Inventory.update(item.id, value);
+          if (updated) {
+            results.updated.push(updated);
+          } else {
+            results.errors.push({
+              item,
+              error: 'Item not found',
+            });
+          }
+        } else if (mode === 'upsert') {
+          // Try to find existing item by name and unit
+          const existing = await Inventory.findByNameAndUnit(
+            userId,
+            value.item_name,
+            value.unit
+          );
+          
+          if (existing) {
+            // Update quantity (add to existing)
+            const updated = await Inventory.update(existing.id, {
+              quantity: existing.quantity + value.quantity,
+            });
+            results.updated.push(updated);
+          } else {
+            // Create new
+            const created = await Inventory.create({
+              ...value,
+              user_id: userId,
+            });
+            results.created.push(created);
+          }
+        }
+      } catch (err) {
+        logger.error('Error processing bulk item:', err);
+        results.errors.push({
+          item,
+          error: err.message,
+        });
+      }
+    }
+    
+    logger.info('Bulk operation completed', {
+      created: results.created.length,
+      updated: results.updated.length,
+      errors: results.errors.length,
+    });
+    
+    res.status(200).json({
+      summary: {
+        total: items.length,
+        created: results.created.length,
+        updated: results.updated.length,
+        errors: results.errors.length,
+      },
+      results,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
  * PUT /inventory/:id
  * Update inventory item
  */
