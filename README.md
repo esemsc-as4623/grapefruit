@@ -21,6 +21,9 @@ curl http://localhost:5000/inventory
 
 # Start the frontend
 ./scripts/start-frontend.sh
+
+# (optional) Reseed demo
+cat database/seed.sql | docker exec -i grapefruit-db psql -U grapefruit -d grapefruit
 ```
 
 ---
@@ -482,7 +485,7 @@ Upload to Akedo platform per their deployment guidelines.
 | Containerization | Docker, Docker Compose |
 | Encryption | AES-256 (crypto library) |
 
-**Simplified vs Production**: Removed Redis, complex ML libraries, background queue systems.
+**Enhancements for Production**: Redis cache, ML libraries, background queue systems.
 
 ---
 
