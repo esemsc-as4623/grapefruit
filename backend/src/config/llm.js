@@ -34,7 +34,7 @@ const LLM_CONFIG = {
     topP: 0.95,                      // Probability mass cutoff for focused sampling
     
     // Response format (not all models support this)
-    // responseFormat: { type: 'json_object' },
+    responseFormat: { type: 'json_object' },
   },
   
   // Model selection for item matching
