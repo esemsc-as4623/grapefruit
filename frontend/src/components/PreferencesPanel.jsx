@@ -3,7 +3,7 @@ import { preferencesAPI } from '../services/api';
 import { Settings, DollarSign, Star, Save, AlertCircle } from 'lucide-react';
 
 const PreferencesPanel = () => {
-  // const [preferences, setPreferences] = useState(null); // Currently unused - loaded directly into form state
+  const [preferences, setPreferences] = useState(null); // Store loaded preferences
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle, XCircle, Edit2, Plus, Trash2, AlertTriangle, Loader } from 'lucide-react';
+import { CheckCircle, Edit2, Plus, Trash2, AlertTriangle, Loader } from 'lucide-react';
 
 const ReceiptReview = ({ receiptData, onApplied, onCancel }) => {
   const [items, setItems] = useState([]);
@@ -7,6 +7,7 @@ const ReceiptReview = ({ receiptData, onApplied, onCancel }) => {
   const [error, setError] = useState(null);
   const [matchResults, setMatchResults] = useState(null);
   const [editingId, setEditingId] = useState(null);
+  const [showRawText, setShowRawText] = useState(false);
 
   useEffect(() => {
     if (receiptData && receiptData.items) {
@@ -62,25 +63,24 @@ const ReceiptReview = ({ receiptData, onApplied, onCancel }) => {
       const data = await response.json();
       setMatchResults(data);
 
-      // Update items with match information
+      // Backend returns: { matches: [...], summary: { total, updates, newItems, ambiguous } }
+      // Update items with match information based on matchType
       const matchedItems = items.map(item => {
-        // Check if this item should be updated
-        const updateMatch = data.to_update.find(u => 
-          u.item_name === item.item_name && u.unit === item.unit
+        // Find this item in the matches array
+        const match = data.matches?.find(m => 
+          m.item_name === item.item_name && m.unit === item.unit
         );
-        if (updateMatch) {
-          return { ...item, action: 'update', matchScore: updateMatch.matchScore, inventoryItem: updateMatch.inventoryItem };
+        
+        if (match) {
+          return { 
+            ...item, 
+            action: match.matchType, // 'update', 'new', or 'ambiguous'
+            matchScore: match.matchScore,
+            inventoryItem: match.inventoryItem 
+          };
         }
 
-        // Check if needs review
-        const reviewMatch = data.needs_review.find(r =>
-          r.item_name === item.item_name && r.unit === item.unit
-        );
-        if (reviewMatch) {
-          return { ...item, action: 'review', matchScore: reviewMatch.matchScore, inventoryItem: reviewMatch.inventoryItem };
-        }
-
-        // Default to create
+        // Default to create if no match found
         return { ...item, action: 'create' };
       });
 
@@ -155,9 +155,28 @@ const ReceiptReview = ({ receiptData, onApplied, onCancel }) => {
         <h3 className="text-lg font-semibold text-gray-900 mb-2">Review Parsed Items</h3>
         <p className="text-sm text-gray-600">
           Review and edit items before adding to inventory. 
-          {matchResults && ` ${matchResults.summary.to_update} will update existing, ${matchResults.summary.to_create} will be created new.`}
+          {matchResults && ` ${matchResults.summary.updates} will update existing, ${matchResults.summary.newItems} will be created new.`}
         </p>
       </div>
+
+      {/* Raw Receipt Text Toggle */}
+      {receiptData.rawText && (
+        <div className="mb-4">
+          <button
+            onClick={() => setShowRawText(!showRawText)}
+            className="text-sm text-grapefruit-600 hover:text-grapefruit-700 font-medium flex items-center gap-1"
+          >
+            {showRawText ? '▼' : '▶'} {showRawText ? 'Hide' : 'Show'} Original Receipt Text
+          </button>
+          {showRawText && (
+            <div className="mt-2 bg-gray-50 border border-gray-200 rounded-lg p-4 max-h-64 overflow-y-auto">
+              <pre className="text-xs font-mono text-gray-700 whitespace-pre-wrap">
+                {receiptData.rawText}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Error Message */}
       {error && (
@@ -199,7 +218,6 @@ const ReceiptReview = ({ receiptData, onApplied, onCancel }) => {
               <th className="text-left py-3 px-2 font-medium text-gray-700">Unit</th>
               <th className="text-left py-3 px-2 font-medium text-gray-700">Category</th>
               <th className="text-left py-3 px-2 font-medium text-gray-700">Confidence</th>
-              <th className="text-left py-3 px-2 font-medium text-gray-700">Action</th>
               <th className="text-right py-3 px-2 font-medium text-gray-700">Edit</th>
             </tr>
           </thead>
@@ -274,26 +292,6 @@ const ReceiptReview = ({ receiptData, onApplied, onCancel }) => {
                   }`}>
                     {(item.confidence * 100).toFixed(0)}%
                   </span>
-                </td>
-                <td className="py-3 px-2">
-                  {item.action === 'update' && (
-                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
-                      <CheckCircle className="w-3 h-3" />
-                      Update
-                    </span>
-                  )}
-                  {item.action === 'create' && (
-                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded text-xs">
-                      <Plus className="w-3 h-3" />
-                      New
-                    </span>
-                  )}
-                  {item.action === 'review' && (
-                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-yellow-100 text-yellow-700 rounded text-xs">
-                      <AlertTriangle className="w-3 h-3" />
-                      Review
-                    </span>
-                  )}
                 </td>
                 <td className="py-3 px-2 text-right">
                   <div className="flex items-center justify-end gap-2">

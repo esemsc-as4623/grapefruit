@@ -7,10 +7,11 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci --only=production
+RUN npm install
 
-# Copy source code
+# Copy source code and prompts
 COPY src ./src
+COPY prompts ./prompts
 
 # Create logs directory
 RUN mkdir -p logs
