@@ -23,7 +23,7 @@ docker compose up -d
 
 # Wait for services to be healthy, then test
 curl http://localhost:5000/health
-curl http://localhost:5000/api/inventory
+curl http://localhost:5000/inventory
 
 # Access the application
 # Frontend: http://localhost:3000
