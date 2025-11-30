@@ -2,7 +2,7 @@
 
 > Autonomous home shopping agent for smart grocery management with AI-powered inventory tracking, need prediction, and seamless ordering.
 
-## 🏗️ Project Structure (Hackathon-Optimized)
+## 🏗️ Project Structure
 
 ```
 akedo-shopping-assistant/
