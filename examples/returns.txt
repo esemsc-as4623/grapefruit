@@ -1,0 +1,25 @@
+FRIENDLY MART
+4410 SPRING AVE
+SAN JOSE, CA
+
+02/13/25  14:22  REGISTER 2
+
+-----------------------------------------------
+ITEM                          QTY     PRICE
+-----------------------------------------------
+MILK 1GAL                       1      3.79
+YOGURT PLAIN 32OZ               1      3.39
+BREAD WHOLE WHEAT               1      2.49
+
+RETURN — CHIPS SEA SALT         1     -3.49
+REFUND APPLIED TO CARD                 -3.49
+
+-----------------------------------------------
+SUBTOTAL                               6.18
+TAX (8.75%)                             0.54
+TOTAL                                   6.72
+
+PAYMENT: VISA •••• 9291
+REFUND: -3.49
+
+THANK YOU!

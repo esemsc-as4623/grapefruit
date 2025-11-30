@@ -1,0 +1,24 @@
+SHOP N' SAVE
+840 N PALM AVE
+SANTA CLARA, CA
+
+02/10/25    18:41   REG#4  TRX#88291
+
+-----------------------------------------
+A1 ITEM                                 2.99
+B2 ITEM                                 4.59
+PRD-001 (1.02LB @ 3.11/LB)              3.17
+FOOD-X                                   1.49
+FOOD-XL                                  2.19
+GOODS-A                                  5.00
+ITEM-7                                   0.99
+PLU 4033 (BANANAS)                       1.21
+PLU 4664 (TOMATOES)                      2.10
+ITEM 123456                              0.79
+-----------------------------------------
+SUBTOTAL                                24.52
+TAX                                      1.98
+TOTAL                                   26.50
+
+PAID CASH
+NO RETURNS WITHOUT RECEIPT
