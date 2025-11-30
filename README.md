@@ -169,16 +169,11 @@ grapefruit/
 │   ├── seed.sql              # ✅ Demo data
 │   └── README.md
 │
-├── examples/                 # ✅ Sample receipts for testing
-│   ├── generic.txt           # ✅ Standard grocery receipt
-│   ├── delivery.txt
-│   ├── discounts.txt
-│   └── ... (9+ receipt examples)
-│
-└── docs/                     # ✅ Documentation
-    ├── API.md                # ✅ API endpoints reference
-    ├── QUICKSTART.md
-    └── TESTING.md
+└── examples/                 # ✅ Sample receipts for testing
+    ├── generic.txt           # ✅ Standard grocery receipt
+    ├── delivery.txt
+    ├── discounts.txt
+    └── ... (9+ receipt examples)
 ```
 
 **Legend:**
