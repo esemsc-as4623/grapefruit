@@ -6,6 +6,25 @@ const logger = require('../utils/logger');
 const router = express.Router();
 
 // ============================================
+// MIDDLEWARE
+// ============================================
+/**
+ * Validate UUID format in route parameters
+ */
+const validateUUID = (paramName) => (req, res, next) => {
+  const uuid = req.params[paramName];
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  
+  if (!uuidRegex.test(uuid)) {
+    return res.status(400).json({ 
+      error: { message: `Invalid UUID format for ${paramName}` } 
+    });
+  }
+  
+  next();
+};
+
+// ============================================
 // VALIDATION SCHEMAS
 // ============================================
 const inventorySchema = Joi.object({
@@ -93,7 +112,7 @@ router.get('/inventory/low', async (req, res, next) => {
  * GET /inventory/:id
  * Get single inventory item
  */
-router.get('/inventory/:id', async (req, res, next) => {
+router.get('/inventory/:id', validateUUID('id'), async (req, res, next) => {
   try {
     const item = await Inventory.findById(req.params.id);
     
@@ -134,7 +153,7 @@ router.post('/inventory', async (req, res, next) => {
  * PUT /inventory/:id
  * Update inventory item
  */
-router.put('/inventory/:id', async (req, res, next) => {
+router.put('/inventory/:id', validateUUID('id'), async (req, res, next) => {
   try {
     const item = await Inventory.update(req.params.id, req.body);
     
@@ -153,7 +172,7 @@ router.put('/inventory/:id', async (req, res, next) => {
  * DELETE /inventory/:id
  * Delete inventory item
  */
-router.delete('/inventory/:id', async (req, res, next) => {
+router.delete('/inventory/:id', validateUUID('id'), async (req, res, next) => {
   try {
     const item = await Inventory.delete(req.params.id);
     
@@ -262,7 +281,7 @@ router.get('/orders/pending', async (req, res, next) => {
  * GET /orders/:id
  * Get single order
  */
-router.get('/orders/:id', async (req, res, next) => {
+router.get('/orders/:id', validateUUID('id'), async (req, res, next) => {
   try {
     const order = await Orders.findById(req.params.id);
     
@@ -325,7 +344,7 @@ router.post('/orders', async (req, res, next) => {
  * PUT /orders/:id/approve
  * Approve pending order
  */
-router.put('/orders/:id/approve', async (req, res, next) => {
+router.put('/orders/:id/approve', validateUUID('id'), async (req, res, next) => {
   try {
     const notes = req.body.notes || null;
     const order = await Orders.approve(req.params.id, notes);
@@ -345,7 +364,7 @@ router.put('/orders/:id/approve', async (req, res, next) => {
  * PUT /orders/:id/reject
  * Reject pending order
  */
-router.put('/orders/:id/reject', async (req, res, next) => {
+router.put('/orders/:id/reject', validateUUID('id'), async (req, res, next) => {
   try {
     const notes = req.body.notes || null;
     const order = await Orders.reject(req.params.id, notes);
@@ -365,7 +384,7 @@ router.put('/orders/:id/reject', async (req, res, next) => {
  * PUT /orders/:id/placed
  * Mark order as placed with vendor
  */
-router.put('/orders/:id/placed', async (req, res, next) => {
+router.put('/orders/:id/placed', validateUUID('id'), async (req, res, next) => {
   try {
     const { vendor_order_id, tracking_number } = req.body;
     
@@ -385,5 +404,49 @@ router.put('/orders/:id/placed', async (req, res, next) => {
     next(error);
   }
 });
+
+// ============================================
+// DEBUG ENDPOINT (Development only)
+// ============================================
+/**
+ * GET /debug/data
+ * Returns all tables for quick inspection during development
+ * NOTE: Remove or secure this endpoint in production
+ */
+if (process.env.NODE_ENV === 'development') {
+  router.get('/debug/data', async (req, res, next) => {
+    try {
+      const userId = req.query.user_id || 'demo_user';
+      
+      const [inventory, preferences, orders] = await Promise.all([
+        Inventory.findByUser(userId),
+        Preferences.findByUser(userId),
+        Orders.findByUser(userId),
+      ]);
+      
+      res.json({
+        user_id: userId,
+        timestamp: new Date().toISOString(),
+        data: {
+          inventory: {
+            items: inventory,
+            count: inventory.length,
+          },
+          preferences: preferences || null,
+          orders: {
+            items: orders,
+            count: orders.length,
+            by_status: orders.reduce((acc, order) => {
+              acc[order.status] = (acc[order.status] || 0) + 1;
+              return acc;
+            }, {}),
+          },
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+}
 
 module.exports = router;

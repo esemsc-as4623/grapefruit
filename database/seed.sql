@@ -12,25 +12,35 @@ TRUNCATE TABLE inventory, preferences, orders CASCADE;
 INSERT INTO preferences (user_id, max_spend, approval_mode, auto_approve_limit, brand_prefs, allowed_vendors) VALUES
 ('demo_user', 250.00, 'auto_under_limit', 100.00, 
 '{
-  "milk": {
+  "dairy": {
     "preferred": ["Organic Valley", "Horizon"],
     "acceptable": ["Great Value", "Kirkland"],
     "avoid": ["Generic Brand"]
   },
-  "bread": {
-    "preferred": ["Dave''s Killer Bread"],
+  "pantry": {
+    "preferred": ["Dave''s Killer Bread", "King Arthur"],
     "acceptable": ["Nature''s Own", "Wonder"],
     "avoid": []
   },
-  "coffee": {
+  "beverages": {
     "preferred": ["Starbucks", "Peet''s"],
     "acceptable": ["Folgers", "Maxwell House"],
     "avoid": []
   },
-  "eggs": {
-    "preferred": ["Organic Free Range"],
-    "acceptable": ["Cage Free"],
-    "avoid": ["Conventional"]
+  "produce": {
+    "preferred": ["Organic", "Fresh Local"],
+    "acceptable": ["Conventional"],
+    "avoid": []
+  },
+  "frozen": {
+    "preferred": ["Organic", "Name Brand"],
+    "acceptable": ["Generic"],
+    "avoid": []
+  },
+  "household": {
+    "preferred": ["Seventh Generation", "Method"],
+    "acceptable": ["Generic", "Store Brand"],
+    "avoid": []
   }
 }'::jsonb,
 '["walmart", "amazon"]'::jsonb);

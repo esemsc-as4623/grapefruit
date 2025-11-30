@@ -2,9 +2,100 @@ const request = require('supertest');
 const app = require('../src/app');
 const db = require('../src/config/database');
 
-// Test helpers
+// Test helpers and factory functions
 let testItemId;
 let testOrderId;
+
+// ============================================
+// TEST DATA FACTORIES
+// ============================================
+/**
+ * Factory function to create a test inventory item
+ * Avoids relying on seed data which may change
+ */
+const createTestItem = async (overrides = {}) => {
+  const defaultItem = {
+    item_name: `Test Item ${Date.now()}`,
+    quantity: 2.5,
+    unit: 'gallon',
+    category: 'dairy',
+    average_daily_consumption: 0.3,
+    // Don't include user_id - it's added by the API automatically
+  };
+  
+  const response = await request(app)
+    .post('/inventory')
+    .send({ ...defaultItem, ...overrides });
+  
+  // Ensure the creation was successful
+  if (response.status !== 201) {
+    throw new Error(`Failed to create test item: ${response.status} - ${JSON.stringify(response.body)}`);
+  }
+  
+  return response.body;
+};
+
+/**
+ * Factory function to create a low-stock test item
+ */
+const createLowStockItem = async (overrides = {}) => {
+  return createTestItem({
+    quantity: 0.5,
+    average_daily_consumption: 0.25,
+    predicted_runout: new Date(Date.now() + 24 * 60 * 60 * 1000), // 1 day from now
+    ...overrides,
+  });
+};
+
+/**
+ * Factory function to create a test order
+ */
+const createTestOrder = async (overrides = {}) => {
+  const defaultOrder = {
+    vendor: 'walmart',
+    items: [
+      {
+        item_name: 'Test Milk',
+        quantity: 2,
+        unit: 'gallon',
+        price: 4.99,
+        brand: 'Great Value',
+      },
+    ],
+    subtotal: 9.98,
+    tax: 0.80,
+    shipping: 0.00,
+    total: 10.78,
+    // Don't include user_id - it's added by the API automatically
+  };
+  
+  const response = await request(app)
+    .post('/orders')
+    .send({ ...defaultOrder, ...overrides });
+  
+  return response.body;
+};
+
+/**
+ * Clean up test data
+ */
+const cleanupTestData = async (itemIds = [], orderIds = []) => {
+  for (const id of itemIds) {
+    try {
+      await request(app).delete(`/inventory/${id}`);
+    } catch (err) {
+      // Ignore errors if item already deleted
+    }
+  }
+  
+  for (const id of orderIds) {
+    try {
+      await db.query('DELETE FROM orders WHERE id = $1', [id]);
+    } catch (err) {
+      // Ignore errors
+    }
+  }
+};
 
 describe('Grapefruit Backend Integration Tests', () => {
   
@@ -35,6 +126,14 @@ describe('Grapefruit Backend Integration Tests', () => {
   // INVENTORY TESTS
   // ============================================
   describe('Inventory Endpoints', () => {
+    const createdItemIds = [];
+    
+    afterEach(async () => {
+      // Clean up created test items
+      await cleanupTestData(createdItemIds);
+      createdItemIds.length = 0;
+    });
+    
     test('GET /inventory should return user inventory', async () => {
       const response = await request(app).get('/inventory');
       expect(response.status).toBe(200);
@@ -44,15 +143,36 @@ describe('Grapefruit Backend Integration Tests', () => {
     });
 
     test('GET /inventory/low should return items running low', async () => {
+      // Create a low-stock item for this test with proper predicted_runout
+      const lowItem = await createTestItem({
+        item_name: `Low Stock Test ${Date.now()}`,
+        quantity: 0.5,
+        unit: 'gallon',
+        category: 'dairy',
+        average_daily_consumption: 0.25,
+      });
+      createdItemIds.push(lowItem.id);
+      
+      // Manually set predicted_runout via update since create doesn't set it
+      await request(app)
+        .put(`/inventory/${lowItem.id}`)
+        .send({ 
+          predicted_runout: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+        });
+      
       const response = await request(app).get('/inventory/low');
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('items');
       expect(Array.isArray(response.body.items)).toBe(true);
+      
+      // Should include our low-stock item
+      const foundItem = response.body.items.find(item => item.id === lowItem.id);
+      expect(foundItem).toBeDefined();
     });
 
     test('POST /inventory should add new item', async () => {
       const newItem = {
-        item_name: 'Test Milk',
+        item_name: `Test Milk ${Date.now()}`,
         quantity: 2.5,
         unit: 'gallon',
         category: 'dairy',
@@ -62,10 +182,11 @@ describe('Grapefruit Backend Integration Tests', () => {
       const response = await request(app).post('/inventory').send(newItem);
       expect(response.status).toBe(201);
       expect(response.body).toHaveProperty('id');
-      expect(response.body.item_name).toBe('Test Milk');
+      expect(response.body.item_name).toBe(newItem.item_name);
       
-      // Save for later tests
+      // Save for cleanup
       testItemId = response.body.id;
+      createdItemIds.push(testItemId);
     });
 
     test('POST /inventory should fail with invalid data', async () => {
@@ -80,15 +201,23 @@ describe('Grapefruit Backend Integration Tests', () => {
     });
 
     test('GET /inventory/:id should return specific item', async () => {
-      const response = await request(app).get(`/inventory/${testItemId}`);
+      // Create a test item specifically for this test
+      const testItem = await createTestItem();
+      createdItemIds.push(testItem.id);
+      
+      const response = await request(app).get(`/inventory/${testItem.id}`);
       expect(response.status).toBe(200);
-      expect(response.body.id).toBe(testItemId);
-      expect(response.body.item_name).toBe('Test Milk');
+      expect(response.body.id).toBe(testItem.id);
+      expect(response.body.item_name).toBe(testItem.item_name);
     });
 
     test('PUT /inventory/:id should update item quantity', async () => {
+      // Create a test item specifically for this test
+      const testItem = await createTestItem();
+      createdItemIds.push(testItem.id);
+      
       const response = await request(app)
-        .put(`/inventory/${testItemId}`)
+        .put(`/inventory/${testItem.id}`)
         .send({ quantity: 1.5 });
       
       expect(response.status).toBe(200);
@@ -96,12 +225,21 @@ describe('Grapefruit Backend Integration Tests', () => {
     });
 
     test('DELETE /inventory/:id should remove item', async () => {
-      const response = await request(app).delete(`/inventory/${testItemId}`);
+      // Create a test item specifically for this test
+      const testItem = await createTestItem();
+      
+      // Ensure item was created successfully
+      expect(testItem).toHaveProperty('id');
+      expect(testItem.id).toBeTruthy();
+      
+      createdItemIds.push(testItem.id);
+      
+      const response = await request(app).delete(`/inventory/${testItem.id}`);
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('message');
       
       // Verify deletion
-      const getResponse = await request(app).get(`/inventory/${testItemId}`);
+      const getResponse = await request(app).get(`/inventory/${testItem.id}`);
       expect(getResponse.status).toBe(404);
     });
   });
