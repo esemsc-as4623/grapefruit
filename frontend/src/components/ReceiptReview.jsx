@@ -5,7 +5,6 @@ const ReceiptReview = ({ receiptData, onApplied, onCancel }) => {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [matchResults, setMatchResults] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [showRawText, setShowRawText] = useState(false);
 
@@ -35,63 +34,6 @@ const ReceiptReview = ({ receiptData, onApplied, onCancel }) => {
   // Remove item from list
   const handleRemove = (id) => {
     setItems(items.filter(item => item.id !== id));
-  };
-
-  // Match items against existing inventory
-  const handleMatch = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const response = await fetch(`http://localhost:5000/receipts/${receiptData.receiptId}/match`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          use_llm: false,
-          threshold: 0.6,
-          auto_approve_threshold: 0.9,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error?.message || 'Failed to match items');
-      }
-
-      const data = await response.json();
-      setMatchResults(data);
-
-      // Backend returns: { matches: [...], summary: { total, updates, newItems, ambiguous } }
-      // Update items with match information based on matchType
-      const matchedItems = items.map(item => {
-        // Find this item in the matches array
-        const match = data.matches?.find(m => 
-          m.item_name === item.item_name && m.unit === item.unit
-        );
-        
-        if (match) {
-          return { 
-            ...item, 
-            action: match.matchType, // 'update', 'new', or 'ambiguous'
-            matchScore: match.matchScore,
-            inventoryItem: match.inventoryItem 
-          };
-        }
-
-        // Default to create if no match found
-        return { ...item, action: 'create' };
-      });
-
-      setItems(matchedItems);
-
-    } catch (err) {
-      setError(err.message);
-      console.error('Error matching items:', err);
-    } finally {
-      setLoading(false);
-    }
   };
 
   // Apply items to inventory
@@ -153,10 +95,6 @@ const ReceiptReview = ({ receiptData, onApplied, onCancel }) => {
       {/* Header */}
       <div className="mb-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-2">Review Parsed Items</h3>
-        <p className="text-sm text-gray-600">
-          Review and edit items before adding to inventory. 
-          {matchResults && ` ${matchResults.summary.updates} will update existing, ${matchResults.summary.newItems} will be created new.`}
-        </p>
       </div>
 
       {/* Raw Receipt Text Toggle */}
@@ -323,22 +261,6 @@ const ReceiptReview = ({ receiptData, onApplied, onCancel }) => {
 
       {/* Actions */}
       <div className="flex gap-3">
-        {!matchResults && (
-          <button
-            onClick={handleMatch}
-            disabled={loading}
-            className="flex-1 py-3 px-4 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
-          >
-            {loading ? (
-              <span className="flex items-center justify-center gap-2">
-                <Loader className="w-5 h-5 animate-spin" />
-                Matching...
-              </span>
-            ) : (
-              'Match with Inventory'
-            )}
-          </button>
-        )}
         <button
           onClick={handleApply}
           disabled={loading || items.length === 0}
