@@ -1,0 +1,158 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, dev, feat/* ]
+  pull_request:
+    branches: [ main, dev ]
+
+jobs:
+  # Backend Tests
+  backend-tests:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: grapefruit
+          POSTGRES_PASSWORD: grapefruit
+          POSTGRES_DB: grapefruit
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./backend
+        run: npm ci
+
+      - name: Setup database
+        env:
+          PGPASSWORD: grapefruit
+        run: |
+          psql -h localhost -U grapefruit -d grapefruit -f database/init.sql
+          psql -h localhost -U grapefruit -d grapefruit -f database/seed.sql
+
+      - name: Run tests
+        working-directory: ./backend
+        env:
+          NODE_ENV: test
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: grapefruit
+          DB_USER: grapefruit
+          DB_PASSWORD: grapefruit
+          ENCRYPTION_KEY: test-encryption-key-32-bytes-1234567890abcdef
+          LOG_LEVEL: error
+        run: npm test -- --coverage
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./backend/coverage/lcov.info
+          flags: backend
+          name: backend-coverage
+
+  # Linting
+  lint:
+    name: Lint Code
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./backend
+        run: npm ci
+
+      - name: Run ESLint
+        working-directory: ./backend
+        run: npm run lint
+        continue-on-error: true
+
+  # Docker Build Test
+  docker-build:
+    name: Docker Build Test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: false
+          tags: grapefruit-backend:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Integration Test with Docker Compose
+  integration-test:
+    name: Integration Test (Docker Compose)
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create .env file
+        run: |
+          cp .env.example .env
+          echo "ENCRYPTION_KEY=$(openssl rand -hex 32)" >> .env
+
+      - name: Start services
+        run: docker-compose up -d
+
+      - name: Wait for services
+        run: |
+          timeout 60 bash -c 'until curl -f http://localhost:5000/health; do sleep 2; done'
+
+      - name: Test health endpoint
+        run: |
+          response=$(curl -s http://localhost:5000/health)
+          echo $response | jq -e '.status == "ok"'
+
+      - name: Test inventory endpoint
+        run: |
+          response=$(curl -s http://localhost:5000/inventory)
+          echo $response | jq -e '.items | length > 0'
+
+      - name: View logs on failure
+        if: failure()
+        run: |
+          docker-compose logs backend
+          docker-compose logs postgres
+
+      - name: Cleanup
+        if: always()
+        run: docker-compose down -v

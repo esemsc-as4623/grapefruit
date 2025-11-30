@@ -2,10 +2,45 @@
 
 > Autonomous home shopping agent for smart grocery management with AI-powered inventory tracking, need prediction, and seamless ordering.
 
-## 🏗️ Project Structure
+![CI Pipeline](https://github.com/esemsc-as4623/grapefruit/actions/workflows/ci.yml/badge.svg)
+![Tests](https://img.shields.io/badge/tests-25%2F25%20passing-success)
+![Coverage](https://img.shields.io/badge/coverage-74%25-yellow)
+![License](https://img.shields.io/badge/license-GPL--3.0-blue)
+
+## 🚀 Quick Start
+
+```bash
+# Clone and setup
+git clone https://github.com/esemsc-as4623/grapefruit.git
+cd grapefruit
+bash scripts/setup.sh
+
+# Test the API
+curl http://localhost:5000/health
+curl http://localhost:5000/inventory
+```
+
+**📖 Full Guide**: See [`docs/QUICKSTART.md`](docs/QUICKSTART.md)
+
+---
+
+## ✅ Current Status
+
+**Branch**: `feature/database-and-core-api`
+
+- ✅ **Database**: PostgreSQL with 3 core tables (inventory, preferences, orders)
+- ✅ **Backend API**: Express.js with RESTful endpoints
+- ✅ **Tests**: 25/25 passing with 74% code coverage
+- ✅ **CI/CD**: GitHub Actions workflows configured
+- ✅ **Docker**: Containerized with docker-compose
+- ✅ **Documentation**: API docs, quick start guide, testing guide
+
+**Next Steps**: Frontend UI, ML forecasting, OCR parsing
+
+---
 
 ```
-akedo-shopping-assistant/
+grapefruit/
 ├── README.md
 ├── docker-compose.yml
 ├── .env.example

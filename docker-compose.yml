@@ -1,0 +1,95 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: grapefruit-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-grapefruit}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-grapefruit}
+      POSTGRES_DB: ${DB_NAME:-grapefruit}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - ./database/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U grapefruit"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - grapefruit-network
+
+  # Backend API Server
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: grapefruit-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: ${BACKEND_PORT:-5000}
+      HOST: 0.0.0.0
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-grapefruit}
+      DB_USER: ${DB_USER:-grapefruit}
+      DB_PASSWORD: ${DB_PASSWORD:-grapefruit}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "${BACKEND_PORT:-5000}:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend/src:/app/src
+      - ./backend/logs:/app/logs
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - grapefruit-network
+
+  # Frontend (React) - Optional for now
+  # frontend:
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: Dockerfile
+  #   container_name: grapefruit-frontend
+  #   restart: unless-stopped
+  #   environment:
+  #     REACT_APP_API_URL: http://localhost:5000
+  #   ports:
+  #     - "3000:3000"
+  #   depends_on:
+  #     - backend
+  #   networks:
+  #     - grapefruit-network
+
+  # ML Services (Python) - Optional for now
+  # ml-services:
+  #   build:
+  #     context: ./ml-services
+  #     dockerfile: Dockerfile
+  #   container_name: grapefruit-ml
+  #   restart: unless-stopped
+  #   ports:
+  #     - "8000:8000"
+  #   networks:
+  #     - grapefruit-network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  grapefruit-network:
+    driver: bridge

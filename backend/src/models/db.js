@@ -1,0 +1,436 @@
+const db = require('../config/database');
+const logger = require('../utils/logger');
+
+/**
+ * Inventory Model
+ * Handles all database operations for inventory items
+ */
+class Inventory {
+  /**
+   * Get all inventory items for a user
+   */
+  static async findByUser(userId = 'demo_user') {
+    try {
+      const result = await db.query(
+        'SELECT * FROM inventory WHERE user_id = $1 ORDER BY category, item_name',
+        [userId]
+      );
+      return result.rows;
+    } catch (error) {
+      logger.error('Error fetching inventory:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get items running low (using view)
+   */
+  static async findLowInventory(userId = 'demo_user') {
+    try {
+      const result = await db.query(
+        'SELECT * FROM low_inventory WHERE user_id = $1',
+        [userId]
+      );
+      return result.rows;
+    } catch (error) {
+      logger.error('Error fetching low inventory:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get single item by ID
+   */
+  static async findById(id) {
+    try {
+      const result = await db.query(
+        'SELECT * FROM inventory WHERE id = $1',
+        [id]
+      );
+      return result.rows[0];
+    } catch (error) {
+      logger.error('Error fetching item by ID:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create new inventory item
+   */
+  static async create(itemData) {
+    const {
+      user_id = 'demo_user',
+      item_name,
+      quantity,
+      unit,
+      category,
+      predicted_runout,
+      average_daily_consumption,
+    } = itemData;
+
+    try {
+      const result = await db.query(
+        `INSERT INTO inventory 
+         (user_id, item_name, quantity, unit, category, predicted_runout, average_daily_consumption)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING *`,
+        [user_id, item_name, quantity, unit, category, predicted_runout, average_daily_consumption]
+      );
+      return result.rows[0];
+    } catch (error) {
+      logger.error('Error creating inventory item:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update inventory item
+   */
+  static async update(id, updates) {
+    const allowedFields = ['quantity', 'unit', 'category', 'predicted_runout', 'average_daily_consumption'];
+    const fields = Object.keys(updates).filter(key => allowedFields.includes(key));
+    
+    if (fields.length === 0) {
+      throw new Error('No valid fields to update');
+    }
+
+    const setClause = fields.map((field, idx) => `${field} = $${idx + 2}`).join(', ');
+    const values = [id, ...fields.map(field => updates[field])];
+
+    try {
+      const result = await db.query(
+        `UPDATE inventory SET ${setClause} WHERE id = $1 RETURNING *`,
+        values
+      );
+      return result.rows[0];
+    } catch (error) {
+      logger.error('Error updating inventory item:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete inventory item
+   */
+  static async delete(id) {
+    try {
+      const result = await db.query(
+        'DELETE FROM inventory WHERE id = $1 RETURNING *',
+        [id]
+      );
+      return result.rows[0];
+    } catch (error) {
+      logger.error('Error deleting inventory item:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update consumption tracking (called after purchase)
+   */
+  static async updateConsumption(id, purchaseQuantity) {
+    try {
+      const result = await db.query(
+        `UPDATE inventory 
+         SET last_purchase_date = CURRENT_TIMESTAMP,
+             last_purchase_quantity = $2
+         WHERE id = $1
+         RETURNING *`,
+        [id, purchaseQuantity]
+      );
+      return result.rows[0];
+    } catch (error) {
+      logger.error('Error updating consumption:', error);
+      throw error;
+    }
+  }
+}
+
+/**
+ * Preferences Model
+ * Handles user preferences for spending, brands, and vendors
+ */
+class Preferences {
+  /**
+   * Get user preferences
+   */
+  static async findByUser(userId = 'demo_user') {
+    try {
+      const result = await db.query(
+        'SELECT * FROM preferences WHERE user_id = $1',
+        [userId]
+      );
+      return result.rows[0];
+    } catch (error) {
+      logger.error('Error fetching preferences:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create or update preferences (upsert)
+   */
+  static async upsert(userId, prefsData) {
+    const {
+      max_spend,
+      approval_mode,
+      auto_approve_limit,
+      brand_prefs,
+      allowed_vendors,
+      notify_low_inventory,
+      notify_order_ready,
+    } = prefsData;
+
+    try {
+      const result = await db.query(
+        `INSERT INTO preferences 
+         (user_id, max_spend, approval_mode, auto_approve_limit, brand_prefs, allowed_vendors, 
+          notify_low_inventory, notify_order_ready)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         ON CONFLICT (user_id) 
+         DO UPDATE SET
+           max_spend = EXCLUDED.max_spend,
+           approval_mode = EXCLUDED.approval_mode,
+           auto_approve_limit = EXCLUDED.auto_approve_limit,
+           brand_prefs = EXCLUDED.brand_prefs,
+           allowed_vendors = EXCLUDED.allowed_vendors,
+           notify_low_inventory = EXCLUDED.notify_low_inventory,
+           notify_order_ready = EXCLUDED.notify_order_ready,
+           updated_at = CURRENT_TIMESTAMP
+         RETURNING *`,
+        [userId, max_spend, approval_mode, auto_approve_limit, 
+         JSON.stringify(brand_prefs), JSON.stringify(allowed_vendors),
+         notify_low_inventory, notify_order_ready]
+      );
+      return result.rows[0];
+    } catch (error) {
+      logger.error('Error upserting preferences:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update specific preference fields
+   */
+  static async update(userId, updates) {
+    const allowedFields = [
+      'max_spend', 'approval_mode', 'auto_approve_limit', 'brand_prefs', 
+      'allowed_vendors', 'notify_low_inventory', 'notify_order_ready'
+    ];
+    
+    const fields = Object.keys(updates).filter(key => allowedFields.includes(key));
+    
+    if (fields.length === 0) {
+      throw new Error('No valid fields to update');
+    }
+
+    const setClause = fields.map((field, idx) => {
+      // JSON fields need special handling
+      if (['brand_prefs', 'allowed_vendors'].includes(field)) {
+        return `${field} = $${idx + 2}::jsonb`;
+      }
+      return `${field} = $${idx + 2}`;
+    }).join(', ');
+
+    const values = [
+      userId, 
+      ...fields.map(field => 
+        ['brand_prefs', 'allowed_vendors'].includes(field) 
+          ? JSON.stringify(updates[field]) 
+          : updates[field]
+      )
+    ];
+
+    try {
+      const result = await db.query(
+        `UPDATE preferences SET ${setClause}, updated_at = CURRENT_TIMESTAMP 
+         WHERE user_id = $1 RETURNING *`,
+        values
+      );
+      return result.rows[0];
+    } catch (error) {
+      logger.error('Error updating preferences:', error);
+      throw error;
+    }
+  }
+}
+
+/**
+ * Orders Model
+ * Handles order creation and approval workflow
+ */
+class Orders {
+  /**
+   * Get all orders for a user
+   */
+  static async findByUser(userId = 'demo_user', status = null) {
+    try {
+      let query = 'SELECT * FROM orders WHERE user_id = $1';
+      const params = [userId];
+
+      if (status) {
+        query += ' AND status = $2';
+        params.push(status);
+      }
+
+      query += ' ORDER BY created_at DESC';
+
+      const result = await db.query(query, params);
+      return result.rows;
+    } catch (error) {
+      logger.error('Error fetching orders:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get pending orders (using view)
+   */
+  static async findPending(userId = 'demo_user') {
+    try {
+      const result = await db.query(
+        'SELECT * FROM pending_orders WHERE user_id = $1',
+        [userId]
+      );
+      return result.rows;
+    } catch (error) {
+      logger.error('Error fetching pending orders:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get order by ID
+   */
+  static async findById(id) {
+    try {
+      const result = await db.query(
+        'SELECT * FROM orders WHERE id = $1',
+        [id]
+      );
+      return result.rows[0];
+    } catch (error) {
+      logger.error('Error fetching order by ID:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create new order
+   */
+  static async create(orderData) {
+    const {
+      user_id = 'demo_user',
+      vendor,
+      items,
+      subtotal,
+      tax = 0,
+      shipping = 0,
+      total,
+      status = 'pending',
+    } = orderData;
+
+    try {
+      const result = await db.query(
+        `INSERT INTO orders 
+         (user_id, vendor, items, subtotal, tax, shipping, total, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING *`,
+        [user_id, vendor, JSON.stringify(items), subtotal, tax, shipping, total, status]
+      );
+      return result.rows[0];
+    } catch (error) {
+      logger.error('Error creating order:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Approve order
+   */
+  static async approve(id, notes = null) {
+    try {
+      const result = await db.query(
+        `UPDATE orders 
+         SET status = 'approved', 
+             approved_at = CURRENT_TIMESTAMP,
+             approval_notes = $2
+         WHERE id = $1 AND status = 'pending'
+         RETURNING *`,
+        [id, notes]
+      );
+      return result.rows[0];
+    } catch (error) {
+      logger.error('Error approving order:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Reject order
+   */
+  static async reject(id, notes = null) {
+    try {
+      const result = await db.query(
+        `UPDATE orders 
+         SET status = 'rejected',
+             approval_notes = $2
+         WHERE id = $1 AND status = 'pending'
+         RETURNING *`,
+        [id, notes]
+      );
+      return result.rows[0];
+    } catch (error) {
+      logger.error('Error rejecting order:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Mark order as placed with vendor
+   */
+  static async markPlaced(id, vendorOrderId, trackingNumber = null) {
+    try {
+      const result = await db.query(
+        `UPDATE orders 
+         SET status = 'placed',
+             placed_at = CURRENT_TIMESTAMP,
+             vendor_order_id = $2,
+             tracking_number = $3
+         WHERE id = $1 AND status = 'approved'
+         RETURNING *`,
+        [id, vendorOrderId, trackingNumber]
+      );
+      return result.rows[0];
+    } catch (error) {
+      logger.error('Error marking order as placed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Mark order as delivered
+   */
+  static async markDelivered(id) {
+    try {
+      const result = await db.query(
+        `UPDATE orders 
+         SET status = 'delivered',
+             delivered_at = CURRENT_TIMESTAMP
+         WHERE id = $1 AND status = 'placed'
+         RETURNING *`,
+        [id]
+      );
+      return result.rows[0];
+    } catch (error) {
+      logger.error('Error marking order as delivered:', error);
+      throw error;
+    }
+  }
+}
+
+module.exports = {
+  Inventory,
+  Preferences,
+  Orders,
+};

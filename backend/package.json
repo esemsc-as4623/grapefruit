@@ -1,0 +1,49 @@
+{
+  "name": "grapefruit-backend",
+  "version": "1.0.0",
+  "description": "Backend API server for Grapefruit AI Shopping Assistant",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "test": "jest --coverage --detectOpenHandles",
+    "test:watch": "jest --watch",
+    "test:integration": "jest tests/integration.test.js",
+    "db:init": "psql $DATABASE_URL -f ../database/init.sql && psql $DATABASE_URL -f ../database/seed.sql",
+    "lint": "eslint src/"
+  },
+  "keywords": [
+    "ai",
+    "shopping",
+    "inventory",
+    "automation"
+  ],
+  "author": "Akedo AI Shopping Assistant Team",
+  "license": "GPL-3.0",
+  "dependencies": {
+    "express": "^4.18.2",
+    "pg": "^8.11.3",
+    "dotenv": "^16.3.1",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "morgan": "^1.10.0",
+    "joi": "^17.11.0",
+    "axios": "^1.6.2",
+    "uuid": "^9.0.1",
+    "winston": "^3.11.0",
+    "crypto": "^1.0.1"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "supertest": "^6.3.3",
+    "nodemon": "^3.0.2",
+    "eslint": "^8.55.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "coveragePathIgnorePatterns": [
+      "/node_modules/"
+    ],
+    "testTimeout": 10000
+  }
+}
