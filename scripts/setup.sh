@@ -14,7 +14,14 @@ if ! command -v docker &> /dev/null; then
     exit 1
 fi
 
-if ! command -v docker-compose &> /dev/null; then
+# Check for Docker Compose (V2 or V1)
+if docker compose version &> /dev/null; then
+    DOCKER_COMPOSE="docker compose"
+    echo "✅ Docker Compose V2 found"
+elif command -v docker-compose &> /dev/null; then
+    DOCKER_COMPOSE="docker-compose"
+    echo "✅ Docker Compose V1 found"
+else
     echo "❌ Docker Compose not found. Please install Docker Compose first."
     exit 1
 fi
@@ -52,7 +59,7 @@ echo "✅ Backend dependencies installed"
 # Start Docker Compose
 echo ""
 echo "🐳 Starting Docker containers..."
-docker-compose up -d
+$DOCKER_COMPOSE up -d
 
 # Wait for database to be ready
 echo ""
@@ -67,7 +74,7 @@ HEALTH_CHECK=$(curl -s http://localhost:5000/health | grep -o '"status":"ok"' ||
 if [ -n "$HEALTH_CHECK" ]; then
     echo "✅ Backend is healthy!"
 else
-    echo "⚠️  Backend health check failed. Check logs with: docker-compose logs backend"
+    echo "⚠️  Backend health check failed. Check logs with: $DOCKER_COMPOSE logs backend"
 fi
 
 echo ""
@@ -85,8 +92,8 @@ echo "  3. Run tests: cd backend && npm test"
 echo "  4. Trigger simulation: curl -X POST http://localhost:5000/simulate/day"
 echo ""
 echo "Logs:"
-echo "  - View all logs: docker-compose logs -f"
-echo "  - View backend logs: docker-compose logs -f backend"
+echo "  - View all logs: $DOCKER_COMPOSE logs -f"
+echo "  - View backend logs: $DOCKER_COMPOSE logs -f backend"
 echo ""
-echo "Stop services: docker-compose down"
+echo "Stop services: $DOCKER_COMPOSE down"
 echo "=========================="
