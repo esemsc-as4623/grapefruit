@@ -1,403 +1,11 @@
 # Grapefruit: Akedo AI Shopping Assistant
 
-> Autonomous home shopping agent for smart grocery management with AI-powered inventory tracking, need prediction, and seamless ordering.
+> Autonomous home shopping agent for smart grocery management with AI-powered inventory tracking, receipt parsing via LLM, and intelligent item matching.
 
 ![CI Pipeline](https://github.com/esemsc-as4623/grapefruit/actions/workflows/ci.yml/badge.svg)
-![Tests](https://img.shields.io/badge/tests-25%2F25%20passing-success)
-![Coverage](https://img.shields.io/badge/coverage-71%25-yellow)
+![Tests](https://img.shields.io/badge/tests-59%20passing-success)
+![Coverage](https://img.shields.io/badge/coverage-47%25-yellow)
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue)
-
-## 🚀 Quick Start
-
-```bash
-# Clone and setup
-git clone https://github.com/esemsc-as4623/grapefruit.git
-cd grapefruit
-./scripts/setup.sh
-
-# Test the API
-curl http://localhost:5000/health
-curl http://localhost:5000/inventory
-
-# Start the frontend
-./scripts/start-frontend.sh
-
-# (optional) Reseed demo
-cat database/seed.sql | docker exec -i grapefruit-db psql -U grapefruit -d grapefruit
-```
-
----
-
-## ✅ Current Status
-
-**Branch**: `dev`
-
-- ✅ **Database**: PostgreSQL with 3 core tables (inventory, preferences, orders)
-- ✅ **Backend API**: Express.js with RESTful endpoints
-- ✅ **Frontend UI**: React with TailwindCSS and complete component set
-- ✅ **Tests**: 25/25 passing with 71% code coverage
-- ✅ **CI/CD**: GitHub Actions workflows configured
-- ✅ **Docker**: Containerized with docker-compose
-- ✅ **Documentation**: API docs, quick start guide, testing guide
-- ✅ **Simulation**: Intelligent forecasting with category-based brand matching
-- ✅ **Validation**: Input validation, UUID validation, error handling
-
-**Next Steps**: ML forecasting service, OCR parsing (optional)
-
----
-
-```
-grapefruit/
-├── README.md
-├── docker-compose.yml
-├── .env.example
-├── .gitignore
-│
-├── frontend/                      # User interface (React)
-│   ├── public/
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── InventoryDashboard/
-│   │   │   │   ├── InventoryDashboard.jsx
-│   │   │   │   ├── ItemCard.jsx
-│   │   │   │   └── RunOutAlert.jsx
-│   │   │   ├── CartReview/
-│   │   │   │   ├── CartReview.jsx
-│   │   │   │   └── ApprovalModal.jsx      # Simple approval flow
-│   │   │   ├── PreferencesPanel/
-│   │   │   │   └── PreferencesPanel.jsx    # Spending limit + brand prefs only
-│   │   │   └── InputManagement/
-│   │   │       ├── ReceiptUpload.jsx       # OCR only
-│   │   │       └── ManualEntry.jsx
-│   │   │   # FUTURE: EmailSync.jsx, AuditLog/, VendorSettings
-│   │   ├── services/
-│   │   │   ├── api.js
-│   │   │   └── encryption.js               # Basic AES-256 only
-│   │   ├── App.jsx
-│   │   └── index.jsx
-│   ├── package.json
-│   └── Dockerfile
-│
-├── backend/                       # API server (Node.js/Express)
-│   ├── src/
-│   │   ├── routes/
-│   │   │   ├── index.js                    # Consolidated routes
-│   │   │   └── simulation.js               # /simulate/day endpoint
-│   │   ├── services/
-│   │   │   └── Service.js                  # Single service file (consolidated logic)
-│   │   ├── integrations/
-│   │   │   ├── AmazonAdapter.js            # Stub responses except placeOrder
-│   │   │   └── WalmartAdapter.js           # Stub responses except placeOrder
-│   │   ├── middleware/
-│   │   │   ├── errorHandler.js
-│   │   │   └── encryption.js               # AES-256 only (no envelope encryption)
-│   │   ├── models/
-│   │   │   └── db.js                       # Sequelize/Knex models
-│   │   ├── utils/
-│   │   │   └── logger.js
-│   │   ├── config/
-│   │   │   └── database.js
-│   │   ├── app.js
-│   │   └── server.js
-│   │   # FUTURE: Full MVC split, envelope encryption, NotificationService
-│   ├── package.json
-│   └── Dockerfile
-│
-├── ml-services/                   # Simplified forecasting (Python)
-│   ├── forecaster.py              # Single file: moving avg + rule-based ranking
-│   ├── sample_data.json           # Preloaded synthetic data
-│   ├── requirements.txt
-│   └── README.md                  # "Simple baseline, architected for extensibility"
-│   # FUTURE: seasonal_adjuster.py, collaborative_filter.py, training pipeline
-│
-├── input-parsers/                 # OCR only (Tesseract)
-│   ├── src/
-│   │   ├── receipt_parser.js      # Tesseract OCR wrapper
-│   │   └── item_normalizer.js     # Hardcoded mappings ("milk" → "whole milk 1gal")
-│   ├── sample_receipts/           # 1-2 test receipt images
-│   └── package.json
-│   # FUTURE: EmailParser, advanced normalization, separate microservice
-│
-├── database/                      # Minimal schema (3 tables)
-│   ├── init.sql                   # Creates inventory, preferences, orders tables
-│   ├── seed.sql                   # Auto-loads sample data
-│   └── README.md
-│   # FUTURE: consumption_log, audit_log, full migration system
-│
-├── shared/                        # Shared utilities
-│   ├── constants/
-│   │   ├── categories.js
-│   │   ├── vendors.js
-│   │   └── units.js
-│   └── utils/
-│       └── date_helpers.js
-│
-├── docs/                          # Documentation
-│   ├── API.md
-│   ├── ARCHITECTURE.md
-│   ├── SETUP.md
-│   └── DEMO_SCRIPT.md
-│
-└── scripts/                       # Setup utilities
-    ├── setup.sh
-    └── generate_test_data.js
-```
-
-**Note**: This structure prioritizes demo functionality over production completeness. Commented "FUTURE" items indicate production-ready extensions.
-
-## 📋 Component Details
-
-### Frontend (`/frontend`)
-**Purpose**: User interface for inventory management, order approval, and preferences configuration.
-
-**Key Responsibilities**:
-- Display real-time inventory with predicted run-out dates
-- Present proposed orders for user approval/rejection via simple modal
-- Manage preferences (spending caps + brand preferences only)
-- Provide receipt upload (OCR) and manual entry interfaces
-
-**Tech Stack**: React, TailwindCSS, Axios
-**Encryption**: Basic AES-256 before API calls
-
-**Deferred for Demo**:
-- Email sync integration
-- Advanced vendor settings
-- Separate audit log view (optional: embed in preferences)
-- Multi-step approval wizards
-
----
-
-## 🚧 Future Work & Production Enhancements
-
-The following features are architected but deferred for post-hackathon development:
-
-### Frontend
-- Email sync integration for automatic order tracking
-- Comprehensive audit log viewer with filtering
-- Advanced vendor preference settings
-- Multi-step approval wizards with undo capability
-
-### Backend  
-- Full MVC controller separation for maintainability
-- Per-user envelope encryption with key management service
-- Push notification service for order alerts
-- WebSocket support for real-time inventory updates
-- Comprehensive unit and integration test suite
-
-### ML Services
-- Seasonal adjustment models (holidays, weather patterns)
-- Collaborative filtering for cross-household insights
-- Reinforcement learning for adaptive brand preferences
-- Full training pipeline with model versioning
-- A/B testing framework for algorithm improvements
-
-### Input Processing
-- IMAP/API email parsing for receipts
-- Advanced NLP for item normalization
-- Image preprocessing pipeline for low-quality receipts
-- Barcode scanning integration
-
-### Database & Infrastructure
-- Complete migration system with rollback support
-- Separate consumption_log table for detailed analytics
-- Immutable audit_log with cryptographic verification
-- Redis caching layer for API responses
-- Background job queue (Bull/BullMQ) for async processing
-
-### Scheduler
-- Cron-based daily forecasting automation
-- Intelligent notification timing based on user patterns
-- Auto-retry logic for failed order placements
-- Batch processing for multi-user deployments
-
-### E-Commerce
-- Full vendor catalog integration
-- Real-time inventory availability checking
-- Price comparison across vendors
-- Deal detection and coupon application
-- Multi-vendor order splitting
-
-### Security & Privacy
-- OAuth2 authentication
-- Role-based access control
-- Differential privacy for aggregate analytics
-- GDPR compliance tooling (data export, right to deletion)
-- Security audit logging with anomaly detection
-
----
-
-### Backend (`/backend`)
-**Purpose**: Core API server handling business logic, integrations, and data management.
-
-**Key Responsibilities**:
-- Three main endpoints: `/inventory`, `/orders`, `/preferences`
-- Single consolidated Service.js for all business logic
-- Order workflow (propose → review → approve → submit)
-- User preference enforcement (spending caps, brand filters)
-- Basic AES-256 encryption for data at rest
-- Integration with Amazon/Walmart APIs (stub responses except `placeOrder()`)
-- Special `/simulate/day` endpoint to trigger forecasting + order generation for demo
-
-**Tech Stack**: Node.js/Express, PostgreSQL, basic crypto library
-**Security**: AES-256 encryption only (envelope encryption deferred)
-
-**Deferred for Demo**:
-- Full MVC controller split
-- Per-user envelope encryption (explain as "future enhancement")
-- Notification service
-- Background Redis queue
-- Advanced audit logging system
-
----
-
-### ML Services (`/ml-services`)
-**Purpose**: Simplified forecasting for consumption prediction and brand ranking.
-
-**Implementation**:
-- **Single file** (`forecaster.py`) containing:
-  - Moving average algorithm for consumption forecasting
-  - Rule-based brand ranking system
-- Preloaded synthetic data in `sample_data.json`
-- No training step required for demo
-- Simple REST endpoint for predictions
-
-**Tech Stack**: Python, pandas, Flask/FastAPI (minimal)
-**Approach**: "Simple ML baseline architected for extensibility"
-
-**Deferred for Demo**:
-- Seasonal adjustment models
-- Collaborative filtering
-- Reinforcement learning for brand preferences
-- Full training pipeline
-- TensorFlow/scikit-learn models
-- Separate microservice deployment
-
----
-
-### Input Parsers (`/input-parsers`)
-**Purpose**: OCR processing for receipt images only.
-
-**Implementation**:
-- Tesseract.js wrapper for OCR extraction
-- Hardcoded item normalization mapping ("milk" → "whole milk 1 gallon")
-- 1-2 sample grocery receipts for testing
-- Output standardized format: `{item_name, quantity, unit, category, timestamp, source}`
-
-**Tech Stack**: Node.js, Tesseract.js
-
-**Deferred for Demo**:
-- Email parsing (IMAP/API integration)
-- Advanced normalization algorithms
-- Separate microservice deployment
-- Complex text preprocessing pipelines
-
----
-
-### Database (`/database`)
-**Purpose**: Minimal schema for hackathon demo with encrypted storage.
-
-**Schema** (3 core tables):
-- **inventory**: `id, user_id, item_name, quantity, unit, category, predicted_runout, last_updated`
-- **preferences**: `id, user_id, max_spend, brand_prefs (JSON), allowed_vendors (JSON)`
-- **orders**: `id, user_id, vendor, items (JSON), total, status, created_at, approved_at`
-
-**Setup**: Single `init.sql` file creates all tables, `seed.sql` auto-loads sample data
-
-**Tech Stack**: PostgreSQL with basic encryption
-
-**Deferred for Demo**:
-- Consumption log table (for detailed ML training)
-- Audit log table (optional: basic logging to orders table)
-- Full migration system (001_create_users.sql, etc.)
-- Separate users table with authentication
-
----
-
-### Scheduler (`/scheduler`)
-**Purpose**: Background jobs for automated forecasting and order generation.
-
-**Jobs**:
-- **Daily Forecasting**: Run prediction models on all user inventories
-- **Order Generation**: Create proposed orders for items running low (within 3 days)
-- **Notifications**: Alert users of pending approvals
-- **Cleanup**: Archive old audit logs
-
-**Tech Stack**: Node.js, Bull (Redis-based queue), Cron
-
----
-
-### Shared (`/shared`)
-**Purpose**: Common utilities, constants, and types used across services.
-
-**Contents**:
-- Item categories (dairy, produce, pantry, etc.)
-- Vendor constants (API endpoints, test credentials)
-- Date helpers and formatters
-- Unit conversion utilities
-
-**Status**: Keep as-is - perfect for hackathon scope.
-
----
-
-## 🔐 Privacy Implementation (Simplified for Demo)
-
-**Encryption**:
-- AES-256 encryption for sensitive data at rest
-- Client-side encryption before transmission where appropriate
-
-**Demo Approach**:
-- Focus on demonstrating encryption of preferences and order data
-- Explain envelope encryption as "future enhancement" during presentation
-
-**Audit Transparency** (Optional):
-- Basic logging to orders table (status transitions)
-- Can mention full immutable audit log as production feature
-
-**Deferred**:
-- Per-user encryption keys with envelope encryption
-- Advanced key management service
-- TensorFlow.js for on-device ML inference
-- Separate audit_log microservice
-
----
-
-## 🛒 E-Commerce Integrations (Stubbed for Demo)
-
-### Amazon Adapter
-- Product search using Amazon Product Advertising API
-- **Stub responses** for search and price checking
-- **Real implementation** for `placeOrder()` only
-- Rate limiting and basic error handling
-
-### Walmart Adapter
-- Product search using Walmart Open API  
-- **Stub responses** for search and price checking
-- **Real implementation** for `placeOrder()` only
-- Fallback error handling
-
-**Common Interface**: Both implement `searchProduct()`, `addToCart()`, `getCartTotal()`, `placeOrder()`
-
-**Demo Strategy**: Use hardcoded product data for cart building, but demonstrate actual order placement with test accounts to satisfy requirement.
-
-**Deferred**:
-- Full vendor catalog integration
-- Real-time inventory checking
-- Advanced retry logic with exponential backoff
-
----
-
-## 🎯 User Control Mechanisms
-
-1. **Spending Caps**: Orders exceeding limits are blocked or items deferred
-2. **Vendor Allowlists**: Only approved vendors used for orders
-3. **Approval Modes**:
-   - Approve all automatically
-   - Approve if under $X
-   - Manual approval for everything
-4. **Brand Preferences**: Ranked list (preferred, acceptable, avoid)
-5. **Audit Log**: Complete transparency of system decisions
-
----
 
 ## 🚀 Quick Start
 
@@ -406,112 +14,446 @@ The following features are architected but deferred for post-hackathon developme
 git clone https://github.com/esemsc-as4623/grapefruit.git
 cd grapefruit
 
-# Copy environment variables
+# Copy and configure environment
 cp .env.example .env
-# Edit .env with your API keys (Amazon/Walmart test accounts)
+# Edit .env with your API keys (especially ASI_API_KEY for LLM)
 
-# Start all services with Docker Compose
-docker-compose up -d
+# Start all services with Docker
+docker compose up -d
 
-# Initialize database with sample data
-docker-compose exec backend npm run db:init
+# Wait for services to be healthy, then test
+curl http://localhost:5000/health
+curl http://localhost:5000/api/inventory
 
-# Access application
+# Access the application
 # Frontend: http://localhost:3000
 # Backend API: http://localhost:5000
 ```
 
-**Quick Demo Flow**:
+### Database Management
+
 ```bash
-# 1. Manually add some inventory items via UI
-# 2. Upload a sample receipt (in /input-parsers/sample_receipts/)
-# 3. Trigger forecast: POST http://localhost:5000/simulate/day
-# 4. Review proposed order in UI and approve
-# 5. Watch order placement with vendor API
+# Reseed database with fresh demo data
+cat database/seed.sql | docker exec -i grapefruit-db psql -U grapefruit -d grapefruit
+
+# Or reinitialize completely
+docker compose down -v  # Remove volumes
+docker compose up -d    # Recreate with fresh data
+```
+
+### Running Tests
+
+```bash
+cd backend
+npm test                              # Run all tests
+npm test tests/receipt-workflow.test.js  # Test receipt parsing
+npm test -- --coverage                # With coverage report
 ```
 
 ---
 
-## 📹 Demo Video Flow
+## ✅ Current Status
 
-1. **Setup**: Show initial inventory entry (receipt upload + manual)
-2. **Learning**: Display system tracking consumption over time
-3. **Forecasting**: Dashboard shows items predicted to run out soon
-4. **Order Generation**: System proposes order with preferred brands
-5. **Approval**: User reviews, checks against spending cap, approves
-6. **Execution**: Order placed with Walmart API (show confirmation)
-7. **Audit**: View complete audit log of the transaction
+**Branch**: `dev`
+
+### ✅ Completed Features
+- **Database**: PostgreSQL with 3 core tables (inventory, preferences, orders)
+- **Backend API**: Express.js with comprehensive RESTful endpoints
+  - `/api/inventory` - Full CRUD for inventory management
+  - `/api/receipts` - Complete receipt processing workflow
+  - `/api/orders` - Order creation and approval
+  - `/api/preferences` - User preference management
+  - `/api/simulate` - Demo forecasting and consumption simulation
+- **Receipt Processing Pipeline**: 
+  - ✅ LLM-powered parsing (ASI Cloud integration)
+  - ✅ Rule-based fallback parser
+  - ✅ Fuzzy matching to existing inventory
+  - ✅ Semantic item categorization
+  - ✅ Confidence scoring and review workflow
+- **Frontend UI**: React with TailwindCSS
+  - ✅ Receipt upload and review interface
+  - ✅ Inventory dashboard
+  - ✅ Manual item entry
+  - ✅ Preferences panel
+  - ✅ Cart review (partial)
+- **Tests**: 59 passing tests with 47% coverage
+  - ✅ Integration tests (37 tests)
+  - ✅ Receipt workflow tests (12 tests)
+  - ✅ Inventory addition tests (10 tests)
+- **Docker**: Fully containerized with docker-compose
+- **LLM Integration**: Production-ready ASI Cloud integration
+  - Retry logic with exponential backoff
+  - Token usage tracking
+  - Comprehensive error handling
+  - Debug mode for troubleshooting
+
+### 🚧 Work in Progress
+- **Order Fulfillment**: Vendor API integration (Amazon/Walmart)
+- **ML Forecasting**: Consumption prediction models
+- **Frontend Polish**: Cart review completion, preferences UI improvements
+- **Advanced Matching**: LLM-based semantic matching (implemented but optional)
+
+### 📋 Future Enhancements
+- Email receipt parsing
+- Real-time inventory updates (WebSocket)
+- Advanced forecasting with seasonal models
+- Multi-vendor order optimization
+- Mobile app
 
 ---
 
-## 🧪 Testing with Synthetic Data
+## 📁 Project Structure
 
-```bash
-# Database automatically loads sample data on init
-npm run db:init
-
-# Test ML forecasting
-cd ml-services && python forecaster.py
-
-# Simulate time progression for demo
-curl -X POST http://localhost:5000/simulate/day
+```
+grapefruit/
+├── README.md
+├── docker-compose.yml        # ✅ Orchestrates all services
+├── .env                       # ✅ Environment configuration
+├── .env.example              # ✅ Template with all required vars
+│
+├── frontend/                 # ✅ React UI (TailwindCSS)
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── ReceiptUpload.jsx      # ✅ Receipt upload interface
+│   │   │   ├── ReceiptReview.jsx      # ✅ Parse results review/edit
+│   │   │   ├── ManualEntry.jsx        # ✅ Manual item addition
+│   │   │   ├── InventoryDashboard.jsx # ✅ Inventory display
+│   │   │   ├── PreferencesPanel.jsx   # ✅ User preferences
+│   │   │   └── CartReview.jsx         # 🚧 Order review (partial)
+│   │   ├── services/
+│   │   │   └── api.js                 # ✅ API client
+│   │   ├── App.jsx                    # ✅ Main app with routing
+│   │   └── index.jsx
+│   ├── package.json
+│   ├── Dockerfile                     # ✅ Production build
+│   └── tailwind.config.js
+│
+├── backend/                  # ✅ Node.js/Express API
+│   ├── src/
+│   │   ├── routes/
+│   │   │   ├── index.js              # ✅ Main inventory/orders routes
+│   │   │   ├── receipts.js           # ✅ Receipt processing workflow
+│   │   │   └── simulation.js         # ✅ Demo forecasting
+│   │   ├── services/
+│   │   │   ├── receiptParser.js      # ✅ LLM + rule-based parsing
+│   │   │   ├── inventoryMatcher.js   # ✅ Fuzzy + semantic matching
+│   │   │   └── llmClient.js          # ✅ ASI Cloud integration
+│   │   ├── utils/
+│   │   │   ├── itemNormalizer.js     # ✅ Item parsing & normalization
+│   │   │   ├── categoryInference.js  # ✅ Category detection
+│   │   │   └── logger.js             # ✅ Winston logging
+│   │   ├── models/
+│   │   │   └── db.js                 # ✅ Database operations
+│   │   ├── middleware/
+│   │   │   ├── errorHandler.js       # ✅ Global error handling
+│   │   │   └── encryption.js         # ⏳ Planned
+│   │   ├── config/
+│   │   │   ├── database.js           # ✅ PostgreSQL config
+│   │   │   └── llm.js                # ✅ LLM config & prompts
+│   │   ├── app.js                    # ✅ Express app setup
+│   │   └── server.js                 # ✅ Server entry point
+│   ├── prompts/
+│   │   ├── receipt_parsing.txt       # ✅ LLM system prompt
+│   │   ├── item_matching.txt         # ✅ Semantic matching prompt
+│   │   └── README.md
+│   ├── tests/
+│   │   ├── integration.test.js       # ✅ 37 API tests
+│   │   ├── receipt-workflow.test.js  # ✅ 12 receipt tests
+│   │   └── inventory-add.test.js     # ✅ 10 inventory tests
+│   ├── logs/                         # ✅ Application logs
+│   ├── package.json
+│   └── Dockerfile                    # ✅ Production build
+│
+├── database/                 # ✅ PostgreSQL setup
+│   ├── init.sql              # ✅ Schema creation
+│   ├── seed.sql              # ✅ Demo data
+│   └── README.md
+│
+├── examples/                 # ✅ Sample receipts for testing
+│   ├── generic.txt           # ✅ Standard grocery receipt
+│   ├── delivery.txt
+│   ├── discounts.txt
+│   └── ... (9+ receipt examples)
+│
+├── scripts/                  # ✅ Setup utilities
+│   ├── setup.sh
+│   ├── start-frontend.sh
+│   └── verify-implementation.sh
+│
+└── docs/                     # ✅ Documentation
+    ├── API.md                # ✅ API endpoints reference
+    ├── QUICKSTART.md
+    └── TESTING.md
 ```
 
-**Note**: `/simulate/day` replaces background scheduler - triggers forecasting and order generation on-demand for judges.
+**Legend:**
+- ✅ Implemented and tested
+- 🚧 Partial implementation / Work in progress
+- ⏳ Planned for future
 
 ---
 
-## 📦 Deployment on Akedo
+## 📋 Key Features
 
-The project is containerized for straightforward deployment:
-- Frontend, backend, and database containers defined in `docker-compose.yml`
-- Environment-based configuration via `.env`
-- Health checks for container orchestration
-- Single command deployment: `docker-compose up`
+### 🧾 Receipt Processing (Completed)
 
-Upload to Akedo platform per their deployment guidelines.
+**LLM-Powered Parsing:**
+- Upload receipt text via web interface
+- ASI Cloud API integration (asi1-mini model)
+- Intelligent extraction of grocery items only
+- Filters out store info, headers, totals, taxes
+- Confidence scoring for each parsed item
+- Automatic fallback to rule-based parsing on LLM failure
 
----
+**Smart Item Matching:**
+- Fuzzy matching against existing inventory (Levenshtein distance)
+- Category-aware matching (beverages, produce, meat, etc.)
+- Unit normalization (lb→pound, gal→gallon)
+- Quantity aggregation for duplicate items
+- Confidence thresholds for auto-approval
 
-## 📚 Tech Stack Summary
+**Production Features:**
+- Retry logic with exponential backoff
+- Token usage and latency tracking
+- Debug mode (`LLM_DEBUG=true`) for troubleshooting
+- Comprehensive error handling
+- Raw response logging
 
-| Component | Technology |
-|-----------|-----------|
-| Frontend | React, TailwindCSS |
-| Backend | Node.js/Express |
-| Database | PostgreSQL |
-| ML | Python, pandas, simple algorithms |
-| OCR | Tesseract.js |
-| Containerization | Docker, Docker Compose |
-| Encryption | AES-256 (crypto library) |
-
-**Enhancements for Production**: Redis cache, ML libraries, background queue systems.
-
----
-
-## 🏆 Judging Criteria Alignment
-
-- **Technical Depth (30%)**: Moving average forecasting, rule-based brand ranking, working API integrations with stubbed search
-- **Usability (25%)**: Clean UI with 3 core views, simple modal approval flow, intuitive preference controls
-- **Privacy (20%)**: AES-256 encryption demonstrated, envelope encryption documented as future work
-- **Theme Relevance (15%)**: Full grocery inventory with OCR + manual input, forecasting, order placement
-- **Documentation (10%)**: Clear README, demo video, well-commented code
-
-**Positioning**: "Working MVP with simple but extensible architecture - production features documented for future implementation"
+**Workflow:**
+1. Upload → Parse (LLM) → Review/Edit → Match → Apply to Inventory
 
 ---
 
-## 📄 License
+### 📦 Inventory Management (Completed)
 
-GNU GPL v3 License - See LICENSE file for details
+**Core Operations:**
+- Full CRUD for inventory items
+- Automatic predicted runout calculation
+- Category-based organization
+- Low inventory alerts
+- Bulk operations support
+
+**Data Model:**
+```javascript
+{
+  id: UUID,
+  user_id: string,
+  item_name: string,
+  quantity: decimal,
+  unit: string,
+  category: string,
+  predicted_runout: date,
+  average_daily_consumption: decimal,
+  last_purchase_date: date,
+  created_at: timestamp,
+  last_updated: timestamp
+}
+```
+
+---
+
+### 🛒 Order Management (Partial)
+
+**Implemented:**
+- Order creation and storage
+- Spending cap validation
+- Order approval workflow
+- Order status tracking
+
+**In Progress:**
+- Vendor API integration (Amazon/Walmart)
+- Multi-vendor order splitting
+- Price comparison
+
+---
+
+### ⚙️ User Preferences (Completed)
+
+**Settings:**
+- Maximum spending limit
+- Brand preferences (preferred/acceptable/avoid)
+- Allowed vendors list
+- Approval mode (auto/manual)
+
+**Persistence:**
+- PostgreSQL storage with JSON fields
+- User-specific preferences
+- Default values for new users
+
+---
+
+## 🧪 Testing
+
+The project includes comprehensive test coverage across three test suites:
+
+### Test Suites
+
+1. **Integration Tests** (`integration.test.js`) - 37 tests
+   - API endpoint testing
+   - Database operations
+   - Error handling
+   - End-to-end workflows
+
+2. **Receipt Workflow Tests** (`receipt-workflow.test.js`) - 12 tests
+   - Receipt upload and parsing
+   - LLM integration
+   - Item matching
+   - Error scenarios
+
+3. **Inventory Tests** (`inventory-add.test.js`) - 10 tests
+   - Item creation
+   - Validation rules
+   - Runout predictions
+   - Data persistence
+
+### Running Tests
+
+```bash
+cd backend
+
+# Run all tests
+npm test
+
+# Run specific test suite
+npm test tests/receipt-workflow.test.js
+
+# Run with coverage
+npm test -- --coverage
+
+# Debug mode (shows LLM responses)
+LLM_DEBUG=true npm test tests/receipt-workflow.test.js
+```
+
+---
+
+## 🔐 Environment Configuration
+
+Create a `.env` file in the project root with these required variables:
+
+```bash
+# Database
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=grapefruit
+DB_USER=grapefruit
+DB_PASSWORD=grapefruit
+
+# Backend
+BACKEND_PORT=5000
+NODE_ENV=development
+LOG_LEVEL=info
+
+# LLM / AI Services (Required for receipt parsing)
+ASI_API_KEY=your-asi-cloud-api-key-here
+ASI_BASE_URL=https://inference.asicloud.cudos.org/v1
+ASI_MODEL=asi1-mini
+LLM_DEBUG=false  # Set to 'true' for debugging
+
+# Security
+ENCRYPTION_KEY=your-32-byte-hex-key-here
+```
+
+**Get ASI Cloud API Key:**
+1. Sign up at [ASI Cloud](https://asicloud.cudos.org)
+2. Generate API key
+3. Add to `.env` file
+
+---
+
+## � Tech Stack
+
+| Component | Technology | Purpose |
+|-----------|-----------|---------|
+| **Frontend** | React 18, TailwindCSS | User interface |
+| **Backend** | Node.js/Express | REST API server |
+| **Database** | PostgreSQL 15 | Data persistence |
+| **LLM** | ASI Cloud (asi1-mini) | Receipt parsing |
+| **Testing** | Jest, Supertest | Automated testing |
+| **Logging** | Winston | Application logs |
+| **Containerization** | Docker, Docker Compose | Deployment |
+
+---
+
+## 🚧 Future Enhancements
+
+### Planned Features
+- **ML Forecasting**: Consumption prediction models (moving average, seasonal)
+- **Vendor Integration**: Amazon/Walmart API connections
+- **Email Parsing**: Automatic receipt extraction from email
+- **Mobile App**: React Native companion app
+- **Advanced Matching**: LLM-based semantic item matching
+- **Real-time Updates**: WebSocket for live inventory changes
+- **Multi-user Support**: User authentication and isolation
+
+### Infrastructure
+- Redis caching layer
+- Background job queue (Bull/BullMQ)
+- Prometheus metrics
+- Grafana dashboards
+---
+
+## 📡 API Endpoints
+
+### Inventory Management
+- `GET /api/inventory` - List all inventory items
+- `GET /api/inventory/low` - Items running low
+- `GET /api/inventory/:id` - Get specific item
+- `POST /api/inventory` - Add new item
+- `PUT /api/inventory/:id` - Update item
+- `DELETE /api/inventory/:id` - Remove item
+
+### Receipt Processing
+- `POST /api/receipts/upload` - Upload receipt text
+- `POST /api/receipts/:id/parse` - Parse with LLM/rules
+- `POST /api/receipts/:id/match` - Match to inventory
+- `POST /api/receipts/:id/apply` - Apply to inventory
+- `GET /api/receipts/:id` - Get receipt status
+
+### Orders
+- `GET /api/orders` - List all orders
+- `GET /api/orders/pending` - Pending approvals
+- `POST /api/orders` - Create new order
+- `GET /api/orders/:id` - Get order details
+- `PUT /api/orders/:id/approve` - Approve order
+- `PUT /api/orders/:id/placed` - Mark as placed
+
+### Preferences
+- `GET /api/preferences` - Get user preferences
+- `PUT /api/preferences` - Update preferences
+
+### Simulation (Demo)
+- `POST /api/simulate/day` - Run daily forecast
+- `POST /api/simulate/consumption` - Simulate usage
+
+Full API documentation: [`docs/API.md`](docs/API.md)
 
 ---
 
 ## 🤝 Contributing
 
-This is a hackathon project. For questions or collaboration, reach out via GitHub issues.
+This is a demo project for the Akedo AI Shopping Assistant Bounty. For questions or suggestions:
+
+1. Open an issue on GitHub
+2. Review [`docs/API.md`](docs/API.md) for implementation details
+3. Check [`docs/TESTING.md`](docs/TESTING.md) for test guidelines
+
+---
+
+## 📄 License
+
+GNU GPL v3 License - See [LICENSE](LICENSE) file for details.
+
+This project is built for educational and demonstration purposes as part of the Akedo AI hackathon.
+
+---
+
+## 🙏 Acknowledgments
+
+- **ASI Cloud** for LLM API access
+- **Akedo** for the hackathon opportunity
+- Built with ❤️ for smart grocery management
 
 ---
 
 **Built for Akedo AI-Robot Shopping Assistant Bounty**  
-Prize Pool: $15,000 USDT | Theme: Autonomous Home Shopping
+*Autonomous home shopping with AI-powered receipt parsing and inventory management*
