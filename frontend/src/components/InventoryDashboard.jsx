@@ -8,6 +8,7 @@ const InventoryDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [simulating, setSimulating] = useState(false);
+  const [sortBy, setSortBy] = useState('category'); // 'category', 'days', or 'oldest'
 
   // Load inventory data
   const loadInventory = async () => {
@@ -97,6 +98,48 @@ const InventoryDashboard = () => {
     return categories[category?.toLowerCase()] || { icon: '📦', color: 'bg-gray-50' };
   };
 
+  // Calculate days until runout
+  const getDaysUntilRunout = (item) => {
+    if (!item.predicted_runout) return NaN;
+    const date = new Date(item.predicted_runout);
+    const now = new Date();
+    const diffDays = Math.ceil((date - now) / (1000 * 60 * 60 * 24));
+    return diffDays;
+  };
+
+  // Sort inventory
+  const getSortedInventory = () => {
+    const sorted = [...inventory];
+    
+    if (sortBy === 'category') {
+      sorted.sort((a, b) => {
+        const catA = (a.category || 'other').toLowerCase();
+        const catB = (b.category || 'other').toLowerCase();
+        return catA.localeCompare(catB);
+      });
+    } else if (sortBy === 'days') {
+      sorted.sort((a, b) => {
+        const daysA = getDaysUntilRunout(a);
+        const daysB = getDaysUntilRunout(b);
+        
+        // NaN values go to the bottom
+        if (isNaN(daysA) && isNaN(daysB)) return 0;
+        if (isNaN(daysA)) return 1;
+        if (isNaN(daysB)) return -1;
+        
+        return daysA - daysB;
+      });
+    } else if (sortBy === 'oldest') {
+      sorted.sort((a, b) => {
+        const dateA = new Date(a.last_updated);
+        const dateB = new Date(b.last_updated);
+        return dateA - dateB; // Oldest first
+      });
+    }
+    
+    return sorted;
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -166,6 +209,45 @@ const InventoryDashboard = () => {
         </div>
       )}
 
+      {/* Sort Controls */}
+      {inventory.length > 0 && (
+        <div className="flex items-center gap-3 bg-white border border-gray-200 rounded-lg p-3">
+          <span className="text-sm font-medium text-gray-700">Sort by:</span>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setSortBy('category')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                sortBy === 'category'
+                  ? 'bg-grapefruit-500 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Category
+            </button>
+            <button
+              onClick={() => setSortBy('days')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                sortBy === 'days'
+                  ? 'bg-grapefruit-500 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Days Until Runout
+            </button>
+            <button
+              onClick={() => setSortBy('oldest')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                sortBy === 'oldest'
+                  ? 'bg-grapefruit-500 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Oldest First
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Inventory Grid */}
       {inventory.length === 0 ? (
         <div className="text-center py-12 bg-gray-50 rounded-lg">
@@ -175,16 +257,18 @@ const InventoryDashboard = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {inventory.map((item) => {
+          {getSortedInventory().map((item) => {
             const categoryInfo = getCategoryInfo(item.category);
             const statusColor = getStatusColor(item);
+            const daysUntilRunout = getDaysUntilRunout(item);
+            const hasConsumption = !isNaN(daysUntilRunout);
             
             return (
               <div
                 key={item.id}
                 className={`${categoryInfo.color} border-2 ${statusColor.split(' ')[1]} rounded-lg p-4 hover:shadow-md transition-shadow`}
               >
-                {/* Header */}
+                {/* Header with quantity on the right */}
                 <div className="flex justify-between items-start mb-3">
                   <div className="flex items-center gap-2">
                     <span className="text-2xl">{categoryInfo.icon}</span>
@@ -193,36 +277,38 @@ const InventoryDashboard = () => {
                       <p className="text-sm text-gray-600 capitalize">{item.category || 'Other'}</p>
                     </div>
                   </div>
-                </div>
-
-                {/* Quantity */}
-                <div className="mb-3">
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-2xl font-bold text-gray-900">
-                      {parseFloat(item.quantity).toFixed(2)}
-                    </span>
-                    <span className="text-sm text-gray-600">{item.unit}</span>
-                  </div>
-                  {item.average_daily_consumption > 0 && (
-                    <p className="text-xs text-gray-500 mt-1">
-                      Consumes ~{parseFloat(item.average_daily_consumption).toFixed(2)} {item.unit}/day
-                    </p>
-                  )}
-                </div>
-
-                {/* Predicted Runout */}
-                <div className={`flex items-center gap-2 px-3 py-2 rounded-lg ${statusColor}`}>
-                  <Calendar className="w-4 h-4" />
-                  <div className="flex-1">
-                    <p className="text-xs font-medium">Runs out in:</p>
-                    <p className="text-sm font-semibold">
-                      {formatDate(item.predicted_runout)}
-                    </p>
+                  <div className="text-right">
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-xl font-bold text-gray-900">
+                        {parseFloat(item.quantity).toFixed(2)}
+                      </span>
+                      <span className="text-xs text-gray-600">{item.unit}</span>
+                    </div>
                   </div>
                 </div>
+
+                {/* Consumption rate */}
+                {item.average_daily_consumption > 0 && (
+                  <p className="text-xs text-gray-500 mb-2">
+                    Consumes ~{parseFloat(item.average_daily_consumption).toFixed(2)} {item.unit}/day
+                  </p>
+                )}
+
+                {/* Predicted Runout - only show if there's a consumption rate */}
+                {hasConsumption && (
+                  <div className={`flex items-center gap-2 px-3 py-2 rounded-lg ${statusColor} mb-2`}>
+                    <Calendar className="w-4 h-4" />
+                    <div className="flex-1">
+                      <p className="text-xs font-medium">Runs out in:</p>
+                      <p className="text-sm font-semibold">
+                        {formatDate(item.predicted_runout)}
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 {/* Last Updated */}
-                <p className="text-xs text-gray-500 mt-3 text-right">
+                <p className="text-xs text-gray-500 text-right">
                   Updated {new Date(item.last_updated).toLocaleDateString()}
                 </p>
               </div>
