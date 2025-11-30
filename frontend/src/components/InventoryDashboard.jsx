@@ -12,6 +12,9 @@ const InventoryDashboard = () => {
   const [simulating, setSimulating] = useState(false);
   const [sortBy, setSortBy] = useState(location.state?.sortBy || 'days'); // Default to 'days', then 'oldest', then 'category'
   const [hoveredItem, setHoveredItem] = useState(null);
+  const [depletingItem, setDepletingItem] = useState(null); // Track which item is in deplete mode
+  const [depleteValue, setDepleteValue] = useState(0); // Current slider value
+  const [confirmingDelete, setConfirmingDelete] = useState(null); // Track item awaiting delete confirmation
 
   // Load inventory data
   const loadInventory = async () => {
@@ -50,6 +53,106 @@ const InventoryDashboard = () => {
       setError(err.response?.data?.error?.message || 'Simulation failed');
     } finally {
       setSimulating(false);
+    }
+  };
+
+  // Delete item from inventory
+  const handleDeleteItem = async (itemId, itemName) => {
+    // Show confirmation prompt
+    setConfirmingDelete({ id: itemId, name: itemName });
+  };
+
+  // Confirm deletion without adding to order
+  const handleConfirmDelete = async (itemId) => {
+    try {
+      await inventoryAPI.delete(itemId);
+      
+      // Reload inventory after deletion
+      await loadInventory();
+      await loadLowStock();
+      
+      // Clear confirmation state
+      setConfirmingDelete(null);
+    } catch (err) {
+      setError(err.response?.data?.error?.message || 'Failed to delete item');
+      console.error('Error deleting item:', err);
+    }
+  };
+
+  // Delete item and add to order (placeholder - cart functionality to be implemented)
+  const handleDeleteAndAddToOrder = async (itemId, itemName) => {
+    try {
+      // TODO: Add to cart/order functionality
+      console.log(`Adding ${itemName} to order`);
+      
+      await inventoryAPI.delete(itemId);
+      
+      // Reload inventory after deletion
+      await loadInventory();
+      await loadLowStock();
+      
+      // Clear confirmation state
+      setConfirmingDelete(null);
+    } catch (err) {
+      setError(err.response?.data?.error?.message || 'Failed to delete item');
+      console.error('Error deleting item:', err);
+    }
+  };
+
+  // Cancel deletion
+  const handleCancelDelete = () => {
+    setConfirmingDelete(null);
+  };
+
+  // Get step size based on unit
+  const getStepSize = (unit) => {
+    const wholeNumberUnits = ['count', 'can'];
+    const quarterUnits = ['package', 'box', 'bottle'];
+    const halfUnits = ['gallon', 'liter', 'quart'];
+    const fineUnits = ['ounce', 'pound', 'lb', 'oz'];
+
+    if (wholeNumberUnits.includes(unit.toLowerCase())) return 1;
+    if (quarterUnits.includes(unit.toLowerCase())) return 0.25;
+    if (halfUnits.includes(unit.toLowerCase())) return 0.5;
+    if (fineUnits.includes(unit.toLowerCase())) return 0.1;
+    return 0.5; // default
+  };
+
+  // Start depletion mode
+  const handleStartDeplete = (item) => {
+    setDepletingItem(item.id);
+    setDepleteValue(parseFloat(item.quantity));
+  };
+
+  // Cancel depletion
+  const handleCancelDeplete = () => {
+    setDepletingItem(null);
+    setDepleteValue(0);
+  };
+
+  // Apply depletion
+  const handleApplyDeplete = async (itemId, newQuantity, itemName) => {
+    try {
+      // If quantity is 0, show confirmation to add to order
+      if (newQuantity === 0) {
+        setConfirmingDelete({ id: itemId, name: itemName });
+        // Exit depletion mode
+        setDepletingItem(null);
+        setDepleteValue(0);
+      } else {
+        await inventoryAPI.update(itemId, { quantity: newQuantity });
+        
+        // Reload inventory after update
+        await loadInventory();
+        await loadLowStock();
+        
+        // Exit depletion mode
+        setDepletingItem(null);
+        setDepleteValue(0);
+      }
+    } catch (err) {
+      setError(err.response?.data?.error?.message || 'Failed to update item');
+      console.error('Error updating item:', err);
     }
   };
 
@@ -265,37 +368,131 @@ const InventoryDashboard = () => {
             const statusColor = getStatusColor(item);
             const daysUntilRunout = getDaysUntilRunout(item);
             const hasConsumption = !isNaN(daysUntilRunout);
+            const isDepletingThisItem = depletingItem === item.id;
+            const isConfirmingThisItem = confirmingDelete?.id === item.id;
+            const stepSize = getStepSize(item.unit);
             
             return (
               <div
                 key={item.id}
                 className={`relative ${categoryInfo.color} border-2 ${statusColor.split(' ')[1]} rounded-lg p-4 hover:shadow-md transition-all group`}
-                onMouseEnter={() => setHoveredItem(item.id)}
-                onMouseLeave={() => setHoveredItem(null)}
+                onMouseEnter={() => !isDepletingThisItem && !isConfirmingThisItem && setHoveredItem(item.id)}
+                onMouseLeave={() => !isDepletingThisItem && !isConfirmingThisItem && setHoveredItem(null)}
               >
-                {/* Action Icons - appear on hover */}
-                {hoveredItem === item.id && (
-                  <div className="absolute top-2 right-2 flex gap-2 bg-white rounded-lg shadow-lg p-2 border border-gray-200">
-                    <button
-                      className="p-2 hover:bg-red-50 rounded transition-colors"
-                      title="Remove from inventory"
-                    >
-                      <Trash2 className="w-4 h-4 text-red-600" />
-                    </button>
-                    <button
-                      className="p-2 hover:bg-blue-50 rounded transition-colors"
-                      title="Add to cart"
-                    >
-                      <ShoppingCart className="w-4 h-4 text-blue-600" />
-                    </button>
-                    <button
-                      className="p-2 hover:bg-orange-50 rounded transition-colors"
-                      title="Deplete item"
-                    >
-                      <Sliders className="w-4 h-4 text-orange-600 rotate-90" />
-                    </button>
+                {isConfirmingThisItem ? (
+                  // Confirmation Mode - Add to Order Prompt
+                  <div className="space-y-4">
+                    <div className="text-center">
+                      <span className="text-3xl mb-2 block">{categoryInfo.icon}</span>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                        Add {item.item_name} to order?
+                      </h3>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex flex-col gap-2">
+                      <button
+                        onClick={() => handleDeleteAndAddToOrder(item.id, item.item_name)}
+                        className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm font-medium"
+                      >
+                        Yes, Add to Order
+                      </button>
+                      <button
+                        onClick={() => handleConfirmDelete(item.id)}
+                        className="w-full px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm font-medium"
+                      >
+                        No, Just Remove
+                      </button>
+                      <button
+                        onClick={handleCancelDelete}
+                        className="w-full px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-sm font-medium"
+                      >
+                        Cancel
+                      </button>
+                    </div>
                   </div>
-                )}
+                ) : isDepletingThisItem ? (
+                  // Depletion Mode - Slider Interface
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-2xl">{categoryInfo.icon}</span>
+                        <div>
+                          <h3 className="font-semibold text-gray-900">{item.item_name}</h3>
+                          <p className="text-sm text-gray-600 capitalize">{item.category || 'Other'}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-2xl font-bold text-orange-600">
+                            {depleteValue.toFixed(stepSize >= 1 ? 0 : 2)}
+                          </span>
+                          <span className="text-sm text-gray-600">{item.unit}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Slider */}
+                    <div className="space-y-2">
+                      <input
+                        type="range"
+                        min="0"
+                        max={parseFloat(item.quantity)}
+                        step={stepSize}
+                        value={depleteValue}
+                        onChange={(e) => setDepleteValue(parseFloat(e.target.value))}
+                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-orange-500"
+                      />
+                      <div className="flex justify-between text-xs text-gray-500">
+                        <span>0</span>
+                        <span>{parseFloat(item.quantity).toFixed(stepSize >= 1 ? 0 : 2)} {item.unit}</span>
+                      </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleApplyDeplete(item.id, depleteValue, item.item_name)}
+                        className="flex-1 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors text-sm font-medium"
+                      >
+                        Apply
+                      </button>
+                      <button
+                        onClick={handleCancelDeplete}
+                        className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-sm font-medium"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  // Normal Mode - Regular Card
+                  <>
+                    {/* Action Icons - appear on hover */}
+                    {hoveredItem === item.id && (
+                      <div className="absolute top-2 right-2 flex gap-2 bg-white rounded-lg shadow-lg p-2 border border-gray-200">
+                        <button
+                          onClick={() => handleDeleteItem(item.id, item.item_name)}
+                          className="p-2 hover:bg-red-50 rounded transition-colors"
+                          title="Remove from inventory"
+                        >
+                          <Trash2 className="w-4 h-4 text-red-600" />
+                        </button>
+                        <button
+                          className="p-2 hover:bg-blue-50 rounded transition-colors"
+                          title="Add to cart"
+                        >
+                          <ShoppingCart className="w-4 h-4 text-blue-600" />
+                        </button>
+                        <button
+                          onClick={() => handleStartDeplete(item)}
+                          className="p-2 hover:bg-orange-50 rounded transition-colors"
+                          title="Deplete item"
+                        >
+                          <Sliders className="w-4 h-4 text-orange-600 rotate-90" />
+                        </button>
+                      </div>
+                    )}
 
                 {/* Header with quantity on the right */}
                 <div className="flex justify-between items-start mb-3">
@@ -340,6 +537,8 @@ const InventoryDashboard = () => {
                 <p className="text-xs text-gray-500 text-right">
                   Updated {new Date(item.last_updated).toLocaleDateString()}
                 </p>
+                  </>
+                )}
               </div>
             );
           })}
