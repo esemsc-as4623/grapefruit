@@ -391,11 +391,13 @@ describe('Grapefruit Backend Integration Tests', () => {
   // SIMULATION TESTS
   // ============================================
   describe('Simulation Endpoints', () => {
-    test('POST /simulate/day should trigger forecasting and order generation', async () => {
+    test('POST /simulate/day should update consumption without creating orders', async () => {
       const response = await request(app).post('/simulate/day');
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('message');
-      expect(response.body).toHaveProperty('low_items');
+      expect(response.body).toHaveProperty('items_updated');
+      expect(response.body).toHaveProperty('low_items_count');
+      expect(response.body).not.toHaveProperty('order_created');
     });
 
     test('POST /simulate/consumption should reduce inventory quantities', async () => {
@@ -435,7 +437,7 @@ describe('Grapefruit Backend Integration Tests', () => {
   // WORKFLOW TESTS
   // ============================================
   describe('Complete Workflow', () => {
-    test('End-to-end: Add item -> Simulate consumption -> Generate order -> Approve', async () => {
+    test('End-to-end: Add item -> Simulate consumption -> Check low stock', async () => {
       // Step 1: Add inventory item (with unique name to avoid conflicts)
       const timestamp = Date.now();
       const newItem = {
@@ -456,20 +458,14 @@ describe('Grapefruit Backend Integration Tests', () => {
         .send({ days: 1 });
       expect(consumeResponse.status).toBe(200);
       
-      // Step 3: Trigger day simulation to generate order
+      // Step 3: Trigger day simulation (updates consumption, does not create orders)
       const simResponse = await request(app).post('/simulate/day');
       expect(simResponse.status).toBe(200);
+      expect(simResponse.body).toHaveProperty('items_updated');
       
-      // Step 4: Check if order was created
-      if (simResponse.body.order_created) {
-        const orderId = simResponse.body.order.id;
-        
-        // Step 5: Approve order
-        const approveResponse = await request(app)
-          .put(`/orders/${orderId}/approve`)
-          .send({ notes: 'Workflow test approval' });
-        expect(approveResponse.status).toBe(200);
-      }
+      // Step 4: Check low inventory items
+      const lowStockResponse = await request(app).get('/inventory/low');
+      expect(lowStockResponse.status).toBe(200);
       
       // Cleanup
       await request(app).delete(`/inventory/${itemId}`);

@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { inventoryAPI, simulationAPI } from '../services/api';
 import { Package, AlertTriangle, TrendingDown, Calendar, RefreshCw } from 'lucide-react';
 
 const InventoryDashboard = () => {
+  const location = useLocation();
   const [inventory, setInventory] = useState([]);
   const [lowStock, setLowStock] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [simulating, setSimulating] = useState(false);
-  const [sortBy, setSortBy] = useState('category'); // 'category', 'days', or 'oldest'
+  const [sortBy, setSortBy] = useState(location.state?.sortBy || 'days'); // Default to 'days', then 'oldest', then 'category'
 
   // Load inventory data
   const loadInventory = async () => {
@@ -215,16 +217,6 @@ const InventoryDashboard = () => {
           <span className="text-sm font-medium text-gray-700">Sort by:</span>
           <div className="flex gap-2">
             <button
-              onClick={() => setSortBy('category')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                sortBy === 'category'
-                  ? 'bg-grapefruit-500 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Category
-            </button>
-            <button
               onClick={() => setSortBy('days')}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 sortBy === 'days'
@@ -243,6 +235,16 @@ const InventoryDashboard = () => {
               }`}
             >
               Oldest First
+            </button>
+            <button
+              onClick={() => setSortBy('category')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                sortBy === 'category'
+                  ? 'bg-grapefruit-500 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Category
             </button>
           </div>
         </div>

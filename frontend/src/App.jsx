@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import InventoryDashboard from './components/InventoryDashboard';
 import CartReview from './components/CartReview';
 import PreferencesPanel from './components/PreferencesPanel';
@@ -195,6 +195,7 @@ const HomePage = () => {
 const AddItemPage = () => {
   const [receiptData, setReceiptData] = useState(null);
   const [showReview, setShowReview] = useState(false);
+  const navigate = useNavigate();
 
   const handleReceiptParsed = (data) => {
     setReceiptData(data);
@@ -202,10 +203,8 @@ const AddItemPage = () => {
   };
 
   const handleApplied = (result) => {
-    alert(`Successfully applied! ${result.created_count} items created, ${result.updated_count} items updated.`);
-    setShowReview(false);
-    setReceiptData(null);
-    // Optionally refresh inventory
+    // Navigate to inventory with days sort instead of showing alert
+    navigate('/inventory', { state: { sortBy: 'days' } });
   };
 
   const handleCancel = () => {
@@ -233,10 +232,10 @@ const AddItemPage = () => {
           onCancel={handleCancel}
         />
       ) : (
-        // Show upload options
+        // Show upload options - Receipt upload first, manual entry second
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <ManualEntry onItemAdded={handleItemAdded} />
           <ReceiptUpload onReceiptParsed={handleReceiptParsed} />
+          <ManualEntry onItemAdded={handleItemAdded} />
         </div>
       )}
     </div>

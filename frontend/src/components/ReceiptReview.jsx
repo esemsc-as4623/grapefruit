@@ -8,6 +8,9 @@ const ReceiptReview = ({ receiptData, onApplied, onCancel }) => {
   const [editingId, setEditingId] = useState(null);
   const [showRawText, setShowRawText] = useState(false);
 
+  // Available unit options (same as ManualEntry)
+  const units = ['gallon', 'liter', 'ounce', 'pound', 'count', 'package', 'box', 'can', 'bottle'];
+
   useEffect(() => {
     if (receiptData && receiptData.items) {
       setItems(receiptData.items.map((item, index) => ({
@@ -189,12 +192,15 @@ const ReceiptReview = ({ receiptData, onApplied, onCancel }) => {
                 </td>
                 <td className="py-3 px-2">
                   {editingId === item.id ? (
-                    <input
-                      type="text"
+                    <select
                       value={item.unit}
                       onChange={(e) => handleEdit(item.id, 'unit', e.target.value)}
-                      className="w-24 px-2 py-1 border border-gray-300 rounded text-sm"
-                    />
+                      className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                    >
+                      {units.map(unit => (
+                        <option key={unit} value={unit}>{unit}</option>
+                      ))}
+                    </select>
                   ) : (
                     <span>{item.unit}</span>
                   )}
