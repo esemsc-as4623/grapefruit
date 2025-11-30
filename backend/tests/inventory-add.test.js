@@ -32,7 +32,7 @@ describe('Inventory Item Addition', () => {
 
   // Close database connection after all tests
   afterAll(async () => {
-    // The db pool is managed by the app, no need to close it here
+    await db.pool.end();
   });
 
   // ============================================
