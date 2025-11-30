@@ -46,13 +46,13 @@ router.post('/day', async (req, res, next) => {
     for (const item of items) {
       if (item.average_daily_consumption) {
         const consumption = item.average_daily_consumption * 1; // 1 day
-        const newQuantity = Math.max(0, item.quantity - consumption);
+        const newQuantity = item.quantity - consumption;
         
-        // If quantity reaches 0, delete the item from inventory
-        if (newQuantity === 0) {
+        // If quantity reaches 0 or goes below 0, delete the item from inventory
+        if (newQuantity <= 0) {
           await Inventory.delete(item.id);
           deletedItems.push(item.item_name);
-          logger.info(`Deleted item ${item.item_name} - quantity reached 0`);
+          logger.info(`Deleted item ${item.item_name} - quantity reached ${newQuantity.toFixed(2)}`);
         } else {
           // Update predicted runout based on new quantity
           let newRunout = null;
@@ -109,33 +109,43 @@ router.post('/consumption', async (req, res, next) => {
     
     const items = await Inventory.findByUser(userId);
     const updatedItems = [];
+    const deletedItems = [];
     
     for (const item of items) {
       if (item.average_daily_consumption) {
         const consumption = item.average_daily_consumption * days;
-        const newQuantity = Math.max(0, item.quantity - consumption);
+        const newQuantity = item.quantity - consumption;
         
-        // Update predicted runout based on new quantity
-        let newRunout = null;
-        if (item.average_daily_consumption > 0 && newQuantity > 0) {
-          const daysRemaining = newQuantity / item.average_daily_consumption;
-          newRunout = new Date(Date.now() + daysRemaining * 24 * 60 * 60 * 1000);
+        // If quantity reaches 0 or goes below 0, delete the item from inventory
+        if (newQuantity <= 0) {
+          await Inventory.delete(item.id);
+          deletedItems.push(item.item_name);
+          logger.info(`Deleted item ${item.item_name} - quantity reached ${newQuantity.toFixed(2)}`);
+        } else {
+          // Update predicted runout based on new quantity
+          let newRunout = null;
+          if (item.average_daily_consumption > 0 && newQuantity > 0) {
+            const daysRemaining = newQuantity / item.average_daily_consumption;
+            newRunout = new Date(Date.now() + daysRemaining * 24 * 60 * 60 * 1000);
+          }
+          
+          const updated = await Inventory.update(item.id, {
+            quantity: parseFloat(newQuantity.toFixed(2)),
+            predicted_runout: newRunout,
+          });
+          
+          updatedItems.push(updated);
         }
-        
-        const updated = await Inventory.update(item.id, {
-          quantity: parseFloat(newQuantity.toFixed(2)),
-          predicted_runout: newRunout,
-        });
-        
-        updatedItems.push(updated);
       }
     }
     
-    logger.info(`Consumption simulation complete - ${updatedItems.length} items updated`);
+    logger.info(`Consumption simulation complete - ${updatedItems.length} items updated, ${deletedItems.length} items deleted`);
     
     res.json({
       message: `Simulated ${days} days of consumption`,
       items_updated: updatedItems.length,
+      items_deleted: deletedItems.length,
+      deleted_items: deletedItems,
       items: updatedItems,
     });
   } catch (error) {
