@@ -299,7 +299,7 @@ async function matchItems(parsedItems, userId = 'demo_user', options = {}) {
           action: 'update',
           inventoryItem: match.item,
           matchScore: match.score,
-          newQuantity: match.item.quantity + parsedItem.quantity,
+          newQuantity: parseFloat(match.item.quantity) + parseFloat(parsedItem.quantity),
         });
       } else {
         // Medium confidence - needs review

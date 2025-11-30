@@ -15,6 +15,33 @@ const router = express.Router();
 // In-memory storage for receipts during processing workflow
 // In production, this could be Redis or a database table
 const receiptStore = new Map();
+const receiptTimeouts = new Map(); // Track timeouts for cleanup
+
+// ============================================
+// MIDDLEWARE
+// ============================================
+/**
+ * Validate UUID format in route parameters
+ */
+const validateUUID = (req, res, next) => {
+  const { id } = req.params;
+  if (!id) {
+    return next();
+  }
+  
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  
+  if (!uuidRegex.test(id)) {
+    return res.status(400).json({ 
+      error: { 
+        message: 'Invalid UUID format for receipt ID',
+        code: 'INVALID_UUID'
+      } 
+    });
+  }
+  
+  next();
+};
 
 // Configure multer for file uploads (accepting text files for now)
 const upload = multer({
@@ -54,7 +81,17 @@ const upload = multer({
 router.post('/upload', upload.single('receipt'), async (req, res, next) => {
   try {
     let receiptText = '';
-    const userId = req.body.user_id || req.query.user_id || 'demo_user';
+    const userId = req.body.userId || req.body.user_id || req.query.user_id;
+    
+    // Validate userId
+    if (!userId) {
+      return res.status(400).json({
+        error: {
+          message: 'userId is required',
+          code: 'MISSING_USER_ID',
+        },
+      });
+    }
     
     // Handle file upload
     if (req.file) {
@@ -113,10 +150,14 @@ router.post('/upload', upload.single('receipt'), async (req, res, next) => {
     });
     
     // Auto-expire after 1 hour
-    setTimeout(() => {
+    const timeoutId = setTimeout(() => {
       receiptStore.delete(receiptId);
+      receiptTimeouts.delete(receiptId);
       logger.info(`Receipt ${receiptId} expired and removed from memory`);
     }, 60 * 60 * 1000);
+    
+    // Store timeout ID for cleanup
+    receiptTimeouts.set(receiptId, timeoutId);
     
     logger.info(`Receipt uploaded: ${receiptId}`, {
       userId,
@@ -124,11 +165,11 @@ router.post('/upload', upload.single('receipt'), async (req, res, next) => {
       vendor: metadata.vendor,
     });
     
-    res.json({
-      receipt_id: receiptId,
-      raw_text: receiptText,
-      metadata,
+    res.status(201).json({
+      receiptId: receiptId,
       status: 'uploaded',
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      metadata,
       message: 'Receipt uploaded successfully. Use /receipts/:id/parse to parse items.',
     });
     
@@ -149,7 +190,7 @@ router.post('/upload', upload.single('receipt'), async (req, res, next) => {
  * 
  * Response: { items, needs_review, stats }
  */
-router.post('/:id/parse', async (req, res, next) => {
+router.post('/:id/parse', validateUUID, async (req, res, next) => {
   try {
     const { id } = req.params;
     const receipt = receiptStore.get(id);
@@ -183,10 +224,13 @@ router.post('/:id/parse', async (req, res, next) => {
     receiptStore.set(id, receipt);
     
     res.json({
-      receipt_id: id,
-      items: parseResult.items,
-      needs_review: parseResult.needsReview,
-      stats: parseResult.stats,
+      receipt: {
+        items: parseResult.items,
+        method: parseResult.method,
+        stats: parseResult.stats,
+        needsReview: parseResult.needsReview,
+      },
+      receiptId: id,
       status: 'parsed',
       message: 'Receipt parsed successfully. Review items and use /receipts/:id/apply to add to inventory.',
     });
@@ -208,7 +252,7 @@ router.post('/:id/parse', async (req, res, next) => {
  * 
  * Response: { to_update, to_create, needs_review, summary }
  */
-router.post('/:id/match', async (req, res, next) => {
+router.post('/:id/match', validateUUID, async (req, res, next) => {
   try {
     const { id } = req.params;
     const receipt = receiptStore.get(id);
@@ -252,11 +296,18 @@ router.post('/:id/match', async (req, res, next) => {
     receiptStore.set(id, receipt);
     
     res.json({
-      receipt_id: id,
-      to_update: matchResults.toUpdate,
-      to_create: matchResults.toCreate,
-      needs_review: matchResults.needsReview,
-      summary: matchResults.summary,
+      receiptId: id,
+      matches: [
+        ...matchResults.toUpdate.map(item => ({ ...item, matchType: 'update' })),
+        ...matchResults.toCreate.map(item => ({ ...item, matchType: 'new' })),
+        ...matchResults.needsReview.map(item => ({ ...item, matchType: 'ambiguous' })),
+      ],
+      summary: {
+        total: matchResults.summary.total,
+        updates: matchResults.summary.toUpdate,
+        newItems: matchResults.summary.toCreate,
+        ambiguous: matchResults.summary.needsReview,
+      },
       status: 'matched',
       message: 'Items matched. Review suggestions and use /receipts/:id/apply to update inventory.',
     });
@@ -278,7 +329,7 @@ router.post('/:id/match', async (req, res, next) => {
  * 
  * Response: { updated_count, created_count, errors }
  */
-router.post('/:id/apply', async (req, res, next) => {
+router.post('/:id/apply', validateUUID, async (req, res, next) => {
   try {
     const { id } = req.params;
     const receipt = receiptStore.get(id);
@@ -348,12 +399,17 @@ router.post('/:id/apply', async (req, res, next) => {
     receiptStore.set(id, receipt);
     
     res.json({
-      receipt_id: id,
-      updated_count: applyResults.updated.length,
-      created_count: applyResults.created.length,
-      error_count: applyResults.errors.length,
-      updated_items: applyResults.updated,
-      created_items: applyResults.created,
+      receiptId: id,
+      summary: {
+        total: applyResults.updated.length + applyResults.created.length,
+        updated: applyResults.updated.length,
+        created: applyResults.created.length,
+        errors: applyResults.errors.length,
+      },
+      changes: [
+        ...applyResults.updated.map(item => ({ action: 'update', item })),
+        ...applyResults.created.map(item => ({ action: 'create', item })),
+      ],
       errors: applyResults.errors,
       status: 'applied',
       message: `Successfully updated ${applyResults.updated.length} items and created ${applyResults.created.length} items.`,
@@ -368,7 +424,7 @@ router.post('/:id/apply', async (req, res, next) => {
  * GET /receipts/:id
  * Get receipt status and data
  */
-router.get('/:id', (req, res) => {
+router.get('/:id', validateUUID, (req, res) => {
   const { id } = req.params;
   const receipt = receiptStore.get(id);
   
@@ -381,12 +437,16 @@ router.get('/:id', (req, res) => {
     });
   }
   
-  // Return receipt without raw_text to reduce response size
-  const { raw_text, ...receiptData } = receipt;
-  
+  // Return receipt with consistent field names
   res.json({
-    ...receiptData,
-    raw_text_length: raw_text.length,
+    receiptId: receipt.id,
+    status: receipt.status,
+    items: receipt.parsed_items,
+    createdAt: receipt.created_at,
+    expiresAt: new Date(new Date(receipt.created_at).getTime() + 60 * 60 * 1000).toISOString(),
+    metadata: receipt.metadata,
+    stats: receipt.parse_stats,
+    matches: receipt.match_results,
   });
 });
 
@@ -394,9 +454,15 @@ router.get('/:id', (req, res) => {
  * DELETE /receipts/:id
  * Delete receipt from memory
  */
-router.delete('/:id', (req, res) => {
+router.delete('/:id', validateUUID, (req, res) => {
   const { id } = req.params;
   const existed = receiptStore.has(id);
+  
+  // Clear timeout if it exists
+  if (receiptTimeouts.has(id)) {
+    clearTimeout(receiptTimeouts.get(id));
+    receiptTimeouts.delete(id);
+  }
   
   receiptStore.delete(id);
   
@@ -416,4 +482,18 @@ router.delete('/:id', (req, res) => {
   }
 });
 
+/**
+ * Cleanup function to clear all pending timeouts
+ * Used primarily for testing to ensure Jest can exit cleanly
+ */
+const cleanup = () => {
+  // Clear all pending timeouts
+  for (const timeoutId of receiptTimeouts.values()) {
+    clearTimeout(timeoutId);
+  }
+  receiptTimeouts.clear();
+  receiptStore.clear();
+};
+
 module.exports = router;
+module.exports.cleanup = cleanup;

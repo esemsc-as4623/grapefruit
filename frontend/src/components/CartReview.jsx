@@ -7,7 +7,7 @@ const CartReview = () => {
   const [pendingOrders, setPendingOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [selectedOrder, setSelectedOrder] = useState(null); // eslint-disable-line no-unused-vars
+  // const [selectedOrder, setSelectedOrder] = useState(null); // Currently unused - for future order details modal
   const [actionLoading, setActionLoading] = useState(false);
 
   // Load all orders

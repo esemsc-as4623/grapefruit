@@ -28,6 +28,21 @@ app.use(morgan('combined', {
 // ============================================
 // ROUTES
 // ============================================
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    service: 'grapefruit-backend',
+    llm: {
+      configured: !!process.env.ASI_API_KEY,
+      model: process.env.ASI_MODEL || 'asi1-mini'
+    }
+  });
+});
+
+// API routes
 app.use('/', routes);
 app.use('/simulate', simulationRoutes);
 app.use('/receipts', receiptRoutes);

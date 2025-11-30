@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import InventoryDashboard from './components/InventoryDashboard';
 import CartReview from './components/CartReview';
