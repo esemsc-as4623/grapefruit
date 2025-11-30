@@ -426,12 +426,7 @@ Full API documentation: [`docs/API.md`](docs/API.md)
 
 ## 🤝 Contributing
 
-This is a demo project for the Akedo AI Shopping Assistant Bounty. For questions or suggestions:
-
-1. Open an issue on GitHub
-2. Review [`docs/API.md`](docs/API.md) for implementation details
-3. Check [`docs/TESTING.md`](docs/TESTING.md) for test guidelines
-
+This is a demo project for the Akedo AI Shopping Assistant Bounty. For questions or suggestions open an issue on GitHub
 ---
 
 ## 📄 License
@@ -442,11 +437,10 @@ This project is built for educational and demonstration purposes as part of the 
 
 ---
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
-- **ASI Cloud** for LLM API access
 - **Akedo** for the hackathon opportunity
-- Built with ❤️ for smart grocery management
+- **ASI Cloud** for LLM API access
 
 ---
 
