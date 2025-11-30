@@ -132,7 +132,12 @@ class Inventory {
 
     try {
       const result = await db.query(
-        `UPDATE inventory SET ${setClause} WHERE id = $1 RETURNING *`,
+        `UPDATE inventory 
+         SET ${setClause}, 
+             last_updated = CURRENT_TIMESTAMP,
+             created_at = COALESCE(created_at, CURRENT_TIMESTAMP)
+         WHERE id = $1 
+         RETURNING *`,
         values
       );
       return result.rows[0];
@@ -166,7 +171,9 @@ class Inventory {
       const result = await db.query(
         `UPDATE inventory 
          SET last_purchase_date = CURRENT_TIMESTAMP,
-             last_purchase_quantity = $2
+             last_purchase_quantity = $2,
+             last_updated = CURRENT_TIMESTAMP,
+             created_at = COALESCE(created_at, CURRENT_TIMESTAMP)
          WHERE id = $1
          RETURNING *`,
         [id, purchaseQuantity]
@@ -224,7 +231,12 @@ class Inventory {
       const values = [id, ...Object.values(updateFields)];
 
       const result = await db.query(
-        `UPDATE inventory SET ${setClause}, last_updated = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *`,
+        `UPDATE inventory 
+         SET ${setClause}, 
+             last_updated = CURRENT_TIMESTAMP,
+             created_at = COALESCE(created_at, CURRENT_TIMESTAMP)
+         WHERE id = $1 
+         RETURNING *`,
         values
       );
 
