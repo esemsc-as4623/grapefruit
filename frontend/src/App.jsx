@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import InventoryDashboard from './components/InventoryDashboard';
 import CartReview from './components/CartReview';
@@ -6,7 +6,7 @@ import PreferencesPanel from './components/PreferencesPanel';
 import ManualEntry from './components/ManualEntry';
 import ReceiptUpload from './components/ReceiptUpload';
 import ReceiptReview from './components/ReceiptReview';
-import { Package, ShoppingCart, Settings, Plus, Home as HomeIcon, Receipt } from 'lucide-react';
+import { Package, ShoppingCart, Settings, Plus, Home as HomeIcon } from 'lucide-react';
 
 // Navigation component
 const Navigation = () => {

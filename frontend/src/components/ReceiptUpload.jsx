@@ -74,6 +74,7 @@ const ReceiptUpload = ({ onReceiptParsed }) => {
         },
         body: JSON.stringify({
           text: receiptText,
+          userId: 'demo_user', // Single session user ID
         }),
       });
 
@@ -83,7 +84,7 @@ const ReceiptUpload = ({ onReceiptParsed }) => {
       }
 
       const uploadData = await uploadResponse.json();
-      const receiptId = uploadData.receipt_id;
+      const receiptId = uploadData.receiptId;
 
       setSuccess(`Receipt uploaded! Processing...`);
 
@@ -94,7 +95,7 @@ const ReceiptUpload = ({ onReceiptParsed }) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          use_llm: false, // Set to true when LLM is available
+          use_llm: true, // Enable LLM parsing
           min_confidence: 0.5,
           filter_non_grocery: true,
         }),
@@ -106,17 +107,21 @@ const ReceiptUpload = ({ onReceiptParsed }) => {
       }
 
       const parseData = await parseResponse.json();
+      
+      // Backend returns { receipt: { items, stats, ... }, receiptId, status }
+      const receiptData = parseData.receipt || parseData;
 
-      setSuccess(`Parsed ${parseData.items.length} items successfully!`);
+      setSuccess(`Parsed ${receiptData.items.length} items successfully!`);
 
       // Notify parent component with parsed data
       if (onReceiptParsed) {
         onReceiptParsed({
           receiptId,
-          items: parseData.items,
-          needsReview: parseData.needs_review,
-          stats: parseData.stats,
+          items: receiptData.items,
+          needsReview: receiptData.needsReview,
+          stats: receiptData.stats,
           metadata: uploadData.metadata,
+          rawText: receiptText, // Include the raw receipt text
         });
       }
 

@@ -33,8 +33,17 @@ const RECEIPT_PARSING_SYSTEM_PROMPT = getReceiptParsingPrompt();
  * Parse receipt text using LLM (ASI Cloud)
  * Throws error if LLM fails (caller handles fallback)
  * 
- * CONFIGURATION: See backend/src/config/llm.js for model selection
- * PROMPT: See backend/prompts/receipt_parsing.txt for system prompt
+ * BEST PRACTICES APPLIED:
+ * - Simple, clear prompts (see prompts/receipt_parsing.txt)
+ * - Limited max_tokens to avoid runaway generations
+ * - Retry logic with exponential backoff (in llmClient.js)
+ * - Token usage and latency tracking
+ * - System/user message separation for clarity
+ * 
+ * DEBUGGING:
+ * - Set LLM_DEBUG=true in .env to see full LLM responses
+ * - Check logs/combined.log for raw responses and metrics
+ * - Monitor token usage in log output
  * 
  * @param {string} receiptText - Raw receipt text
  * @returns {Promise<Array>} - Array of parsed items
@@ -43,19 +52,48 @@ async function parseWithLLM(receiptText) {
   const systemPrompt = getReceiptParsingPrompt();
   const config = LLM_CONFIG.receiptParsing;
   
-  logger.info('Calling LLM for receipt parsing');
+  // Limit input length to avoid excessive token usage
+  const maxInputLength = 10000; // ~2500 tokens
+  const truncatedText = receiptText.length > maxInputLength 
+    ? receiptText.substring(0, maxInputLength) + '\n[...truncated]'
+    : receiptText;
+  
+  if (receiptText.length > maxInputLength) {
+    logger.warn('Receipt text truncated for LLM processing', {
+      original: receiptText.length,
+      truncated: truncatedText.length,
+    });
+  }
+  
+  logger.info('Calling LLM for receipt parsing', {
+    model: config.model,
+    textLength: truncatedText.length,
+    temperature: config.temperature,
+    maxTokens: config.maxTokens,
+  });
+  
+  // Construct user prompt with context
+  const userPrompt = `Parse this grocery receipt and extract ONLY actual food/grocery items.
+Return JSON with an "items" array. Do not include store info, totals, or fees.
+
+Receipt text:
+${truncatedText}`;
   
   const response = await callLLMWithJSON(
-    receiptText,
+    userPrompt,
     systemPrompt,
     { 
       config,
       temperature: config.temperature,
       maxTokens: config.maxTokens,
+      topP: config.topP,
     }
   );
   
-  logger.info('LLM parsing successful', { itemCount: response.items?.length });
+  logger.info('LLM parsing successful', { 
+    itemCount: response.items?.length,
+    avgConfidence: response.items?.reduce((sum, item) => sum + (item.confidence || 0), 0) / (response.items?.length || 1),
+  });
   
   // Validate response structure
   if (!response.items || !Array.isArray(response.items)) {

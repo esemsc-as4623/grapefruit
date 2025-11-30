@@ -21,25 +21,32 @@ const path = require('path');
  * Change these values to use different models or providers
  */
 const LLM_CONFIG = {
-  // Model selection
+  // Model selection for receipt parsing
   receiptParsing: {
     model: process.env.ASI_MODEL || 'asi1-mini',
     provider: 'openai-compatible',   // ASI Cloud uses OpenAI-compatible API
     endpoint: process.env.ASI_BASE_URL || 'https://inference.asicloud.cudos.org/v1',
     apiKey: process.env.ASI_API_KEY,
-    temperature: 0.1,                // Low for consistency
-    maxTokens: 2048,
-    responseFormat: { type: 'json_object' },  // Request JSON output
+    
+    // Production-optimized parameters
+    temperature: 0.1,                // Low temperature for deterministic, structured output
+    maxTokens: 1500,                 // Cap response length (typical receipt: 500-1000 tokens)
+    topP: 0.95,                      // Probability mass cutoff for focused sampling
+    
+    // Response format (not all models support this)
+    responseFormat: { type: 'json_object' },
   },
   
+  // Model selection for item matching
   itemMatching: {
     model: process.env.ASI_MODEL || 'asi1-mini',
     provider: 'openai-compatible',
     endpoint: process.env.ASI_BASE_URL || 'https://inference.asicloud.cudos.org/v1',
     apiKey: process.env.ASI_API_KEY,
-    temperature: 0.2,                // Slightly higher for semantic matching
-    maxTokens: 512,
-    responseFormat: { type: 'json_object' },
+    
+    temperature: 0.3,                // Slightly higher for semantic matching flexibility
+    maxTokens: 500,                  // Short responses for yes/no matching
+    topP: 0.9,
   },
   
   // Fallback configuration
@@ -50,14 +57,21 @@ const LLM_CONFIG = {
   
   // Performance optimization
   caching: {
-    enabled: true,                   // Cache identical prompts
+    enabled: true,                   // Cache identical prompts (future enhancement)
     ttl: 3600,                       // Cache TTL in seconds (1 hour)
   },
   
-  // Batch processing
+  // Batch processing (future enhancement)
   batch: {
     enabled: false,                  // Batch multiple items in one call
     maxBatchSize: 10,                // Max items per batch
+  },
+  
+  // Monitoring and debugging
+  monitoring: {
+    logRawResponses: process.env.LLM_DEBUG === 'true',  // Set LLM_DEBUG=true to see full responses
+    logTokenUsage: true,             // Track token consumption
+    logLatency: true,                // Track API call timing
   },
 };
 
