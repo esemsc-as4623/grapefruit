@@ -6,14 +6,13 @@ import PreferencesPanel from './components/PreferencesPanel';
 import ManualEntry from './components/ManualEntry';
 import ReceiptUpload from './components/ReceiptUpload';
 import ReceiptReview from './components/ReceiptReview';
-import { Package, ShoppingCart, Settings, Plus, Home as HomeIcon } from 'lucide-react';
+import { Package, ShoppingCart, Settings, Plus } from 'lucide-react';
 
 // Navigation component
 const Navigation = () => {
   const location = useLocation();
 
   const navItems = [
-    { path: '/', icon: HomeIcon, label: 'Dashboard' },
     { path: '/inventory', icon: Package, label: 'Inventory' },
     { path: '/orders', icon: ShoppingCart, label: 'Orders' },
     { path: '/add', icon: Plus, label: 'Add Item' },
@@ -27,7 +26,7 @@ const Navigation = () => {
           <div className="flex">
             {/* Logo */}
             <div className="flex-shrink-0 flex items-center">
-              <span className="text-2xl">🍊</span>
+              <img src="/grapefruit.png" alt="Grapefruit" className="h-8 w-8" />
               <span className="ml-2 text-xl font-bold text-grapefruit-600">Grapefruit</span>
             </div>
 
@@ -253,7 +252,7 @@ function App() {
         
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Routes>
-            <Route path="/" element={<HomePage />} />
+            <Route path="/" element={<InventoryDashboard />} />
             <Route path="/inventory" element={<InventoryDashboard />} />
             <Route path="/orders" element={<CartReview />} />
             <Route path="/add" element={<AddItemPage />} />
@@ -264,8 +263,9 @@ function App() {
         {/* Footer */}
         <footer className="bg-white border-t border-gray-200 mt-12">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-            <p className="text-center text-sm text-gray-500">
-              🍊 Grapefruit - AI Shopping Assistant | Built for Akedo Bounty
+            <p className="text-center text-sm text-gray-500 flex items-center justify-center gap-2">
+              <img src="/grapefruit.png" alt="Grapefruit" className="h-4 w-4" />
+              Grapefruit - AI Shopping Assistant | Built for Akedo Bounty
             </p>
           </div>
         </footer>
