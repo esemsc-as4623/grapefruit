@@ -482,7 +482,7 @@ Upload to Akedo platform per their deployment guidelines.
 | Containerization | Docker, Docker Compose |
 | Encryption | AES-256 (crypto library) |
 
-**Simplified vs Production**: Removed Redis, complex ML libraries, background queue systems.
+**Enhancements for Production**: Redis cache, ML libraries, background queue systems.
 
 ---
 
