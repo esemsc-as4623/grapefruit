@@ -3,7 +3,7 @@ import { preferencesAPI } from '../services/api';
 import { Settings, DollarSign, Star, Save, AlertCircle } from 'lucide-react';
 
 const PreferencesPanel = () => {
-  const [preferences, setPreferences] = useState(null);
+  const [preferences, setPreferences] = useState(null); // eslint-disable-line no-unused-vars
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);

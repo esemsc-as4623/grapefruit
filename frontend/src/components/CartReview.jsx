@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { ordersAPI } from '../services/api';
-import { ShoppingCart, Check, X, DollarSign, Package, Calendar, Truck } from 'lucide-react';
+import { ShoppingCart, Check, X, Package, Calendar, Truck } from 'lucide-react';
 
 const CartReview = () => {
   const [orders, setOrders] = useState([]);
   const [pendingOrders, setPendingOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [selectedOrder, setSelectedOrder] = useState(null); // eslint-disable-line no-unused-vars
   const [actionLoading, setActionLoading] = useState(false);
 
   // Load all orders

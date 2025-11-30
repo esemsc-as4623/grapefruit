@@ -27,19 +27,25 @@ check() {
 
 # 1. Check Docker is installed
 echo "1️⃣  Checking prerequisites..."
-if which docker > /dev/null 2>&1; then
+if command -v docker > /dev/null 2>&1; then
   echo -e "${check_mark} Docker installed"
   DOCKER_AVAILABLE=true
+  DOCKER_CMD="docker"
+elif [ -f "/Applications/Docker.app/Contents/Resources/bin/docker" ]; then
+  echo -e "${check_mark} Docker installed (Docker Desktop)"
+  DOCKER_AVAILABLE=true
+  DOCKER_CMD="/Applications/Docker.app/Contents/Resources/bin/docker"
 else
   echo -e "${RED}⚠${NC}  Docker not installed (optional for verification)"
   echo "   Install Docker Desktop for Mac from: https://www.docker.com/products/docker-desktop"
   DOCKER_AVAILABLE=false
+  DOCKER_CMD=""
 fi
 
 # Check for Docker Compose (V2 or V1)
-if docker compose version > /dev/null 2>&1; then
+if [ "$DOCKER_AVAILABLE" = true ] && $DOCKER_CMD compose version > /dev/null 2>&1; then
   echo -e "${check_mark} Docker Compose V2 available"
-  DOCKER_COMPOSE="docker compose"
+  DOCKER_COMPOSE="$DOCKER_CMD compose"
 elif which docker-compose > /dev/null 2>&1; then
   echo -e "${check_mark} Docker Compose V1 available"
   DOCKER_COMPOSE="docker-compose"
@@ -158,31 +164,3 @@ grep -q "createTestItem" backend/tests/integration.test.js
 check "Test factory functions"
 
 grep -q "25 passed" backend/package.json > /dev/null 2>&1 || echo -e "${check_mark} Test suite exists"
-
-# 8. Check documentation
-echo ""
-echo "8️⃣  Checking documentation..."
-[ -f "docs/API.md" ]
-check "API documentation"
-
-[ -f "docs/QUICKSTART.md" ]
-check "Quick start guide"
-
-[ -f "DEMO.md" ]
-check "Demo script"
-
-# Summary
-echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo -e "${GREEN}✅ Database + Core API Implementation VERIFIED!${NC}"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo ""
-echo "📋 Implementation Summary:"
-echo "   • 3 database tables with views and triggers"
-echo "   • Complete RESTful API with validation"
-echo "   • Intelligent simulation endpoints"
-echo "   • 25/25 integration tests passing"
-echo "   • Comprehensive documentation"
-echo ""
-echo "🎬 Ready to demo! See DEMO.md for complete demo script"
-echo ""

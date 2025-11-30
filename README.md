@@ -13,20 +13,21 @@
 # Clone and setup
 git clone https://github.com/esemsc-as4623/grapefruit.git
 cd grapefruit
-bash scripts/setup.sh
+./scripts/setup.sh
 
 # Test the API
 curl http://localhost:5000/health
 curl http://localhost:5000/inventory
-```
 
-**📖 Full Guide**: See [`docs/QUICKSTART.md`](docs/QUICKSTART.md)
+# Start the frontend
+./scripts/start-frontend.sh
+```
 
 ---
 
 ## ✅ Current Status
 
-**Branch**: `feat/frontend`
+**Branch**: `dev`
 
 - ✅ **Database**: PostgreSQL with 3 core tables (inventory, preferences, orders)
 - ✅ **Backend API**: Express.js with RESTful endpoints
