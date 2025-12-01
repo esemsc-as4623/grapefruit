@@ -299,36 +299,46 @@ router.put('/inventory/:id', validateUUID('id'), async (req, res, next) => {
     
     const item = await Inventory.update(req.params.id, req.body);
     
-    // Record consumption event if quantity changed
+    // Record consumption event if quantity changed (and quantity decreased)
     if (req.body.quantity !== undefined && req.body.quantity !== currentItem.quantity) {
+      const quantityChanged = currentItem.quantity - req.body.quantity;
+      
+      // Record the event (both increases and decreases)
       await consumptionLearner.recordConsumptionEvent({
         userId: currentItem.user_id,
         itemName: currentItem.item_name,
         quantityBefore: currentItem.quantity,
         quantityAfter: req.body.quantity,
-        eventType: 'manual_update',
+        eventType: quantityChanged > 0 ? 'manual_depletion' : 'manual_update',
         source: 'user',
         unit: currentItem.unit,
         category: currentItem.category,
         itemCreatedAt: currentItem.created_at,
       });
       
-      // Update consumption rate with new data
-      const learningResult = await consumptionLearner.learnConsumptionRate(
-        currentItem.user_id,
-        currentItem.item_name,
-        {
-          category: currentItem.category,
-          unit: currentItem.unit,
-          daysInInventory: (Date.now() - new Date(currentItem.created_at).getTime()) / (1000 * 60 * 60 * 24),
+      // Only learn from depletions (quantity decreased), not restocks
+      if (quantityChanged > 0) {
+        // Update consumption rate with new data
+        const learningResult = await consumptionLearner.learnConsumptionRate(
+          currentItem.user_id,
+          currentItem.item_name,
+          {
+            category: currentItem.category,
+            unit: currentItem.unit,
+            daysInInventory: (Date.now() - new Date(currentItem.created_at).getTime()) / (1000 * 60 * 60 * 24),
+          }
+        );
+        
+        // Update the item with learned consumption rate if we got a good estimate
+        if (learningResult.rate && learningResult.confidence !== 'very_low') {
+          await Inventory.update(req.params.id, {
+            average_daily_consumption: learningResult.rate,
+          });
+          
+          logger.info(
+            `Learned from manual depletion: ${currentItem.item_name}, rate: ${learningResult.rate.toFixed(3)}, confidence: ${learningResult.confidence}`
+          );
         }
-      );
-      
-      // Update the item with learned consumption rate if we got a good estimate
-      if (learningResult.rate && learningResult.confidence !== 'very_low') {
-        await Inventory.update(req.params.id, {
-          average_daily_consumption: learningResult.rate,
-        });
       }
     }
     
@@ -351,18 +361,35 @@ router.delete('/inventory/:id', validateUUID('id'), async (req, res, next) => {
       return res.status(404).json({ error: { message: 'Item not found' } });
     }
     
-    // Record deletion as consumption event
-    await consumptionLearner.recordConsumptionEvent({
-      userId: currentItem.user_id,
-      itemName: currentItem.item_name,
-      quantityBefore: currentItem.quantity,
-      quantityAfter: 0,
-      eventType: 'deletion',
-      source: 'user',
-      unit: currentItem.unit,
-      category: currentItem.category,
-      itemCreatedAt: currentItem.created_at,
-    });
+    // Record deletion as consumption event (if there was remaining quantity)
+    if (currentItem.quantity > 0) {
+      await consumptionLearner.recordConsumptionEvent({
+        userId: currentItem.user_id,
+        itemName: currentItem.item_name,
+        quantityBefore: currentItem.quantity,
+        quantityAfter: 0,
+        eventType: 'deletion',
+        source: 'user',
+        unit: currentItem.unit,
+        category: currentItem.category,
+        itemCreatedAt: currentItem.created_at,
+      });
+      
+      // Learn from this deletion event to update future predictions
+      const learningResult = await consumptionLearner.learnConsumptionRate(
+        currentItem.user_id,
+        currentItem.item_name,
+        {
+          category: currentItem.category,
+          unit: currentItem.unit,
+          daysInInventory: (Date.now() - new Date(currentItem.created_at).getTime()) / (1000 * 60 * 60 * 24),
+        }
+      );
+      
+      logger.info(
+        `Learned from deletion: ${currentItem.item_name}, rate: ${learningResult.rate?.toFixed(3)}, confidence: ${learningResult.confidence}`
+      );
+    }
     
     const item = await Inventory.delete(req.params.id);
     

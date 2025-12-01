@@ -2,6 +2,12 @@
  * Consumption Learner Service
  * Learns and predicts item consumption rates using ML techniques
  * 
+ * Learning Sources:
+ * - Simulation events: Daily consumption simulation
+ * - Manual depletions: User reduces quantity via PUT /inventory/:id
+ * - Manual deletions: User deletes item with remaining quantity
+ * - Time-based tracking: Records time elapsed between events
+ * 
  * Algorithm Selection:
  * - < 2 days of data: Use category estimate (insufficient data)
  * - 2 days to 1 week: Simple Moving Average
