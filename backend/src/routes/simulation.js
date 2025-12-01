@@ -1,6 +1,7 @@
 const express = require('express');
 const Joi = require('joi');
 const { Inventory, Orders, Preferences, Cart } = require('../models/db');
+const db = require('../config/database');
 const logger = require('../utils/logger');
 
 const router = express.Router();
@@ -74,6 +75,37 @@ router.post('/day', async (req, res, next) => {
     
     logger.info('Starting day simulation with consistent consumption...');
     
+    // Step 1: Advance time by moving all dates back by 1 day
+    // This simulates the passage of time in the system
+    await db.query(`
+      UPDATE inventory
+      SET 
+        predicted_runout = predicted_runout - INTERVAL '1 day',
+        last_purchase_date = last_purchase_date - INTERVAL '1 day',
+        created_at = created_at - INTERVAL '1 day',
+        last_updated = last_updated - INTERVAL '1 day'
+      WHERE user_id = $1
+    `, [userId]);
+    
+    await db.query(`
+      UPDATE orders
+      SET 
+        created_at = created_at - INTERVAL '1 day',
+        approved_at = approved_at - INTERVAL '1 day',
+        placed_at = placed_at - INTERVAL '1 day'
+      WHERE user_id = $1
+    `, [userId]);
+    
+    await db.query(`
+      UPDATE cart
+      SET 
+        added_at = added_at - INTERVAL '1 day',
+        updated_at = updated_at - INTERVAL '1 day'
+      WHERE user_id = $1
+    `, [userId]);
+    
+    logger.info('Advanced time by 1 day for all records');
+    
     // Get all inventory items
     const items = await Inventory.findByUser(userId);
     const updatedItems = [];
@@ -103,14 +135,18 @@ router.post('/day', async (req, res, next) => {
       const stepSize = getStepSize(item.unit);
       const consumption = item.average_daily_consumption * 1; // 1 day
       
-      // Round consumption to match step size
-      const roundedConsumption = roundToStep(consumption, stepSize);
-      const newQuantity = roundToStep(item.quantity - roundedConsumption, stepSize);
+      // Round consumption to match step size, but ensure at least one step of depletion
+      let roundedConsumption = roundToStep(consumption, stepSize);
+      if (roundedConsumption === 0 && consumption > 0) {
+        roundedConsumption = stepSize; // Ensure at least one step of depletion
+      }
+      
+      const newQuantity = Math.max(0, roundToStep(item.quantity - roundedConsumption, stepSize));
       
       // If quantity reaches 0 or goes below 0, delete and optionally add to cart
       if (newQuantity <= 0) {
-        if (Math.random() < 0.7) {
-          // 70% chance: Add to cart before deleting
+        if (Math.random() < 0.5) {
+          // 50% chance: Add to cart before deleting
           await Cart.addItem({
             user_id: userId,
             item_name: item.item_name,
@@ -262,7 +298,8 @@ router.post('/day', async (req, res, next) => {
     logger.info(`Day simulation complete - ${updatedItems.length} items updated, ${deletedItems.length} items deleted, ${cartAddedItems.length} items added to cart, ${lowItems.length} items running low`);
     
     res.json({
-      message: 'Day simulation complete with consistent consumption',
+      message: 'Day simulation complete - time advanced by 1 day, items consumed',
+      time_advanced_days: 1,
       items_updated: updatedItems.length,
       items_deleted: deletedItems.length,
       items_added_to_cart: cartAddedItems.length,
