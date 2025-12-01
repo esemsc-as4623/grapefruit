@@ -9,9 +9,11 @@
     "test": "jest --coverage --detectOpenHandles",
     "test:watch": "jest --watch",
     "test:integration": "jest tests/integration.test.js",
+    "test:amazon": "docker exec -i grapefruit-db psql -U grapefruit -d grapefruit < tests/cleanup-test-data.sql && jest tests/amazon-ordering.test.js --detectOpenHandles",
     "db:init": "psql $DATABASE_URL -f ../database/init.sql",
     "db:seed": "psql $DATABASE_URL -f ../database/seed.sql",
     "db:reset": "npm run db:init && npm run db:seed",
+    "db:cleanup": "docker exec -i grapefruit-db psql -U grapefruit -d grapefruit < tests/cleanup-test-data.sql",
     "lint": "eslint src/"
   },
   "keywords": [
@@ -32,6 +34,7 @@
     "joi": "^17.11.0",
     "morgan": "^1.10.0",
     "multer": "^1.4.5-lts.1",
+    "node-cron": "^3.0.3",
     "pg": "^8.11.3",
     "uuid": "^9.0.1",
     "winston": "^3.11.0"
