@@ -6,6 +6,7 @@ const routes = require('./routes/index');
 const simulationRoutes = require('./routes/simulation');
 const receiptRoutes = require('./routes/receipts');
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
+const { privacyPreservingLogger } = require('./middleware/encryption');
 const logger = require('./utils/logger');
 
 const app = express();
@@ -18,10 +19,17 @@ app.use(cors()); // Enable CORS
 app.use(express.json()); // Parse JSON bodies
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
 
-// HTTP request logging
-app.use(morgan('combined', {
+// AKEDO-inspired: Privacy-preserving request logging
+app.use(privacyPreservingLogger());
+
+// HTTP request logging (with IP redaction via custom stream)
+app.use(morgan(':method :url :status :response-time ms', {
   stream: {
-    write: (message) => logger.info(message.trim()),
+    write: (message) => {
+      // Redact IPs from morgan logs
+      const redacted = message.replace(/(\d{1,3}\.\d{1,3})\.\d{1,3}\.\d{1,3}/g, '$1.xxx.xxx');
+      logger.info(redacted.trim());
+    },
   },
 }));
 
