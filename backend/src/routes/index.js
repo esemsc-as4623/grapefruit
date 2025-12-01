@@ -318,14 +318,15 @@ router.put('/inventory/:id', validateUUID('id'), async (req, res, next) => {
       
       // Only learn from depletions (quantity decreased), not restocks
       if (quantityChanged > 0) {
-        // Update consumption rate with new data
+        // Manual depletions happen instantly - no time passage
+        // Only learn from historical patterns, not from real-world clock time
         const learningResult = await consumptionLearner.learnConsumptionRate(
           currentItem.user_id,
           currentItem.item_name,
           {
             category: currentItem.category,
             unit: currentItem.unit,
-            daysInInventory: (Date.now() - new Date(currentItem.created_at).getTime()) / (1000 * 60 * 60 * 24),
+            daysInInventory: null, // No time passage for manual actions
           }
         );
         
@@ -375,14 +376,15 @@ router.delete('/inventory/:id', validateUUID('id'), async (req, res, next) => {
         itemCreatedAt: currentItem.created_at,
       });
       
-      // Learn from this deletion event to update future predictions
+      // Manual deletions happen instantly - no time passage
+      // Only learn from historical patterns, not from real-world clock time
       const learningResult = await consumptionLearner.learnConsumptionRate(
         currentItem.user_id,
         currentItem.item_name,
         {
           category: currentItem.category,
           unit: currentItem.unit,
-          daysInInventory: (Date.now() - new Date(currentItem.created_at).getTime()) / (1000 * 60 * 60 * 24),
+          daysInInventory: null, // No time passage for manual actions
         }
       );
       

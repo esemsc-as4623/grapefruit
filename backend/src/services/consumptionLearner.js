@@ -62,7 +62,12 @@ async function recordConsumptionEvent({
     );
 
     let daysElapsed;
-    if (lastEventResult.rows.length > 0) {
+    
+    // For manual actions (source='user'), use minimal time since they happen instantly
+    if (source === 'user') {
+      daysElapsed = 0.01; // Minimal value to indicate instant action
+    } else if (lastEventResult.rows.length > 0) {
+      // For simulation events, calculate actual time difference
       const lastTimestamp = new Date(lastEventResult.rows[0].timestamp);
       daysElapsed = (Date.now() - lastTimestamp.getTime()) / (1000 * 60 * 60 * 24);
     } else {
@@ -73,8 +78,11 @@ async function recordConsumptionEvent({
     }
 
     // Calculate days in inventory (total lifespan)
+    // For manual actions, use 0 to indicate no time passage
     const createdAt = itemCreatedAt ? new Date(itemCreatedAt) : new Date();
-    const daysInInventory = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24);
+    const daysInInventory = source === 'user' 
+      ? 0 
+      : (Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24);
 
     const result = await db.query(
       `INSERT INTO consumption_history 
@@ -98,7 +106,7 @@ async function recordConsumptionEvent({
     );
 
     logger.info(
-      `Recorded consumption event: ${itemName} consumed ${quantityConsumed.toFixed(2)} over ${daysElapsed.toFixed(2)} days`
+      `Recorded consumption event: ${itemName} consumed ${quantityConsumed.toFixed(2)} over ${daysElapsed.toFixed(2)} days (source: ${source})`
     );
 
     return result.rows[0];
