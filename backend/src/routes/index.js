@@ -1,6 +1,6 @@
 const express = require('express');
 const Joi = require('joi');
-const { Inventory, Preferences, Orders } = require('../models/db');
+const { Inventory, Preferences, Orders, Cart } = require('../models/db');
 const logger = require('../utils/logger');
 
 const router = express.Router();
@@ -59,6 +59,16 @@ const orderSchema = Joi.object({
   tax: Joi.number().min(0).optional(),
   shipping: Joi.number().min(0).optional(),
   total: Joi.number().min(0).required(),
+});
+
+const cartItemSchema = Joi.object({
+  item_name: Joi.string().required().max(255),
+  quantity: Joi.number().min(0.01).required(),
+  unit: Joi.string().required().max(50),
+  category: Joi.string().max(100).optional(),
+  estimated_price: Joi.number().min(0).optional(),
+  notes: Joi.string().max(500).optional(),
+  source: Joi.string().valid('manual', 'trash', 'deplete', 'cart_icon').optional(),
 });
 
 // ============================================
@@ -525,6 +535,128 @@ router.put('/orders/:id/placed', validateUUID('id'), async (req, res, next) => {
     
     logger.info(`Order placed: ${order.id}`);
     res.json(order);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ============================================
+// CART ROUTES
+// ============================================
+
+/**
+ * GET /cart
+ * Get all cart items for user
+ */
+router.get('/cart', async (req, res, next) => {
+  try {
+    const userId = req.query.user_id || 'demo_user';
+    const items = await Cart.findByUser(userId);
+    const count = await Cart.getCount(userId);
+    const total = await Cart.getTotalPrice(userId);
+    
+    res.json({
+      items,
+      count,
+      total,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /cart/:id
+ * Get single cart item
+ */
+router.get('/cart/:id', validateUUID('id'), async (req, res, next) => {
+  try {
+    const item = await Cart.findById(req.params.id);
+    
+    if (!item) {
+      return res.status(404).json({ error: { message: 'Cart item not found' } });
+    }
+    
+    res.json(item);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /cart
+ * Add item to cart
+ */
+router.post('/cart', async (req, res, next) => {
+  try {
+    const { error, value } = cartItemSchema.validate(req.body);
+    if (error) {
+      return res.status(400).json({ error: { message: error.details[0].message } });
+    }
+    
+    const userId = req.body.user_id || 'demo_user';
+    
+    const item = await Cart.addItem({
+      ...value,
+      user_id: userId,
+    });
+    
+    logger.info(`Item added to cart: ${item.id} - ${item.item_name}`);
+    res.status(201).json(item);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PUT /cart/:id
+ * Update cart item
+ */
+router.put('/cart/:id', validateUUID('id'), async (req, res, next) => {
+  try {
+    const item = await Cart.update(req.params.id, req.body);
+    
+    if (!item) {
+      return res.status(404).json({ error: { message: 'Cart item not found' } });
+    }
+    
+    logger.info(`Cart item updated: ${item.id}`);
+    res.json(item);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * DELETE /cart/:id
+ * Remove item from cart
+ */
+router.delete('/cart/:id', validateUUID('id'), async (req, res, next) => {
+  try {
+    const item = await Cart.removeItem(req.params.id);
+    
+    if (!item) {
+      return res.status(404).json({ error: { message: 'Cart item not found' } });
+    }
+    
+    logger.info(`Cart item removed: ${item.id}`);
+    res.json({ message: 'Item removed from cart', item });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * DELETE /cart
+ * Clear all cart items for user
+ */
+router.delete('/cart', async (req, res, next) => {
+  try {
+    const userId = req.query.user_id || 'demo_user';
+    const items = await Cart.clearCart(userId);
+    
+    logger.info(`Cart cleared for user: ${userId}`);
+    res.json({ message: 'Cart cleared', count: items.length });
   } catch (error) {
     next(error);
   }
