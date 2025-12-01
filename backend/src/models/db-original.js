@@ -1,98 +1,67 @@
 const db = require('../config/database');
 const logger = require('../utils/logger');
-const { withTransaction } = require('../utils/transaction');
-const { prepareInsert, prepareUpdate, decryptRow, decryptRows, SENSITIVE_FIELDS } = require('../utils/dbEncryption');
-
-/**
- * AKEDO BOUNTY: Database Models with Column-Level Encryption
- * All sensitive fields are encrypted at rest using AES-256-GCM
- * - inventory.item_name
- * - orders.items (JSONB), tracking_number, vendor_order_id
- * - preferences.brand_prefs (JSONB)
- */
 
 /**
  * Inventory Model
  * Handles all database operations for inventory items
- *
- * ENCRYPTION: item_name field is encrypted before storage
  */
 class Inventory {
-  /**
-   * Format item name to title case (capitalize first letter of each word)
-   * @param {string} itemName - Original item name
-   * @returns {string} - Formatted item name
-   */
-  static formatItemName(itemName) {
-    if (!itemName || typeof itemName !== 'string') return itemName;
-    
-    return itemName
-      .toLowerCase()
-      .split(' ')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ')
-      .trim();
-  }
-
   /**
    * Get all inventory items for a user
    */
   static async findByUser(userId = 'demo_user') {
     try {
       const result = await db.query(
-        `SELECT * FROM inventory WHERE user_id = $1 
-         ORDER BY 
-           CASE category
-             WHEN 'dairy' THEN 1
-             WHEN 'produce' THEN 2
-             WHEN 'meat' THEN 3
-             WHEN 'bread' THEN 4
-             WHEN 'pantry' THEN 5
-             WHEN 'others' THEN 6
-             ELSE 7
-           END,
-           item_name`,
+        'SELECT * FROM inventory WHERE user_id = $1 ORDER BY category, item_name',
         [userId]
       );
-      return decryptRows(result.rows, SENSITIVE_FIELDS.inventory);
+      return result.rows;
     } catch (error) {
       logger.error('Error fetching inventory:', error);
       throw error;
     }
   }
 
+  /**
+   * Get items running low (using view)
+   */
   static async findLowInventory(userId = 'demo_user') {
     try {
       const result = await db.query(
         'SELECT * FROM low_inventory WHERE user_id = $1',
         [userId]
       );
-      return decryptRows(result.rows, SENSITIVE_FIELDS.inventory);
+      return result.rows;
     } catch (error) {
       logger.error('Error fetching low inventory:', error);
       throw error;
     }
   }
 
+  /**
+   * Get single item by ID
+   */
   static async findById(id) {
     try {
       const result = await db.query(
         'SELECT * FROM inventory WHERE id = $1',
         [id]
       );
-      return decryptRow(result.rows[0], SENSITIVE_FIELDS.inventory);
+      return result.rows[0];
     } catch (error) {
       logger.error('Error fetching item by ID:', error);
       throw error;
     }
   }
 
+  /**
+   * Find item by name and user
+   */
   static async findByName(userId, itemName) {
     try {
-      const formattedItemName = this.formatItemName(itemName);
       const result = await db.query(
         'SELECT * FROM inventory WHERE user_id = $1 AND item_name = $2',
-        [userId, formattedItemName]
+        [userId, itemName]
       );
       return result.rows[0];
     } catch (error) {
@@ -101,19 +70,26 @@ class Inventory {
     }
   }
 
+  /**
+   * Find item by name and unit for a user
+   * Used for matching receipt items to existing inventory
+   */
   static async findByNameAndUnit(userId, itemName, unit) {
     try {
-      const allItems = await this.findByUser(userId);
-      return allItems.find(item =>
-        item.item_name.toLowerCase() === itemName.toLowerCase() &&
-        item.unit === unit
+      const result = await db.query(
+        'SELECT * FROM inventory WHERE user_id = $1 AND LOWER(item_name) = LOWER($2) AND unit = $3',
+        [userId, itemName, unit]
       );
+      return result.rows[0];
     } catch (error) {
       logger.error('Error fetching item by name and unit:', error);
       throw error;
     }
   }
 
+  /**
+   * Create new inventory item
+   */
   static async create(itemData) {
     const {
       user_id = 'demo_user',
@@ -125,10 +101,8 @@ class Inventory {
       average_daily_consumption,
     } = itemData;
 
-    // Format item name to title case
-    const formattedItemName = this.formatItemName(item_name);
-
     try {
+      // Calculate predicted_runout if consumption rate is provided
       let calculatedRunout = predicted_runout;
       if (!calculatedRunout && average_daily_consumption && average_daily_consumption > 0) {
         const daysUntilRunout = quantity / average_daily_consumption;
@@ -137,104 +111,98 @@ class Inventory {
         calculatedRunout = runoutDate;
       }
 
-      const encryptedData = prepareInsert(
-        { user_id, item_name, quantity, unit, category, predicted_runout: calculatedRunout, average_daily_consumption },
-        SENSITIVE_FIELDS.inventory
-      );
-
       const result = await db.query(
-        `INSERT INTO inventory
-         (user_id, item_name, quantity, unit, category, predicted_runout, average_daily_consumption, is_encrypted)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        `INSERT INTO inventory 
+         (user_id, item_name, quantity, unit, category, predicted_runout, average_daily_consumption)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING *`,
-        [
-          encryptedData.user_id,
-          encryptedData.item_name,
-          encryptedData.quantity,
-          encryptedData.unit,
-          encryptedData.category,
-          encryptedData.predicted_runout,
-          encryptedData.average_daily_consumption,
-          encryptedData.is_encrypted
-        ]
+        [user_id, item_name, quantity, unit, category, calculatedRunout, average_daily_consumption]
       );
-
-      return decryptRow(result.rows[0], SENSITIVE_FIELDS.inventory);
+      return result.rows[0];
     } catch (error) {
       logger.error('Error creating inventory item:', error);
       throw error;
     }
   }
 
+  /**
+   * Update inventory item
+   */
   static async update(id, updates) {
     const allowedFields = ['quantity', 'unit', 'category', 'predicted_runout', 'average_daily_consumption'];
     const fields = Object.keys(updates).filter(key => allowedFields.includes(key));
-
+    
     if (fields.length === 0) {
       throw new Error('No valid fields to update');
     }
 
     try {
+      // Get current item to check for consumption rate
       const current = await this.findById(id);
       if (!current) {
         throw new Error('Item not found');
       }
 
+      // If quantity is being updated and we have a consumption rate, recalculate predicted_runout
       if (updates.quantity !== undefined && current.average_daily_consumption && current.average_daily_consumption > 0) {
         const newQuantity = parseFloat(updates.quantity);
         const consumptionRate = parseFloat(updates.average_daily_consumption || current.average_daily_consumption);
-
+        
         if (consumptionRate > 0) {
           const daysUntilRunout = newQuantity / consumptionRate;
           const runoutDate = new Date();
           runoutDate.setDate(runoutDate.getDate() + daysUntilRunout);
           updates.predicted_runout = runoutDate;
-
+          
+          // Add predicted_runout to fields if not already there
           if (!fields.includes('predicted_runout')) {
             fields.push('predicted_runout');
           }
         }
       }
 
-      const encryptedUpdates = prepareUpdate(updates, SENSITIVE_FIELDS.inventory);
-      const finalFields = Object.keys(encryptedUpdates).filter(key => allowedFields.includes(key) || key === 'is_encrypted');
-      const setClause = finalFields.map((field, idx) => `${field} = $${idx + 2}`).join(', ');
-      const values = [id, ...finalFields.map(field => encryptedUpdates[field])];
+      const setClause = fields.map((field, idx) => `${field} = $${idx + 2}`).join(', ');
+      const values = [id, ...fields.map(field => updates[field])];
 
       const result = await db.query(
-        `UPDATE inventory
-         SET ${setClause},
+        `UPDATE inventory 
+         SET ${setClause}, 
              last_updated = CURRENT_TIMESTAMP,
              created_at = COALESCE(created_at, CURRENT_TIMESTAMP)
-         WHERE id = $1
+         WHERE id = $1 
          RETURNING *`,
         values
       );
-
-      return decryptRow(result.rows[0], SENSITIVE_FIELDS.inventory);
+      return result.rows[0];
     } catch (error) {
       logger.error('Error updating inventory item:', error);
       throw error;
     }
   }
 
+  /**
+   * Delete inventory item
+   */
   static async delete(id) {
     try {
       const result = await db.query(
         'DELETE FROM inventory WHERE id = $1 RETURNING *',
         [id]
       );
-      return decryptRow(result.rows[0], SENSITIVE_FIELDS.inventory);
+      return result.rows[0];
     } catch (error) {
       logger.error('Error deleting inventory item:', error);
       throw error;
     }
   }
 
+  /**
+   * Update consumption tracking (called after purchase)
+   */
   static async updateConsumption(id, purchaseQuantity) {
     try {
       const result = await db.query(
-        `UPDATE inventory
+        `UPDATE inventory 
          SET last_purchase_date = CURRENT_TIMESTAMP,
              last_purchase_quantity = $2,
              last_updated = CURRENT_TIMESTAMP,
@@ -243,25 +211,30 @@ class Inventory {
          RETURNING *`,
         [id, purchaseQuantity]
       );
-      return decryptRow(result.rows[0], SENSITIVE_FIELDS.inventory);
+      return result.rows[0];
     } catch (error) {
       logger.error('Error updating consumption:', error);
       throw error;
     }
   }
 
+  /**
+   * Add quantity to existing item and recalculate runout date
+   */
   static async addQuantity(id, additionalQuantity, averageDailyConsumption = null) {
     try {
+      // Get current item to access current quantity and consumption rate
       const current = await this.findById(id);
       if (!current) {
         throw new Error('Item not found');
       }
 
       const newQuantity = parseFloat(current.quantity) + parseFloat(additionalQuantity);
-      const consumptionRate = averageDailyConsumption !== null
-        ? averageDailyConsumption
+      const consumptionRate = averageDailyConsumption !== null 
+        ? averageDailyConsumption 
         : parseFloat(current.average_daily_consumption);
 
+      // Calculate new predicted runout if we have a consumption rate
       let predictedRunout = null;
       if (consumptionRate && consumptionRate > 0) {
         const daysUntilRunout = newQuantity / consumptionRate;
@@ -270,6 +243,7 @@ class Inventory {
         predictedRunout = runoutDate;
       }
 
+      // Update the item
       const updateFields = {
         quantity: newQuantity,
         last_purchase_date: new Date(),
@@ -290,163 +264,125 @@ class Inventory {
       const values = [id, ...Object.values(updateFields)];
 
       const result = await db.query(
-        `UPDATE inventory
-         SET ${setClause},
+        `UPDATE inventory 
+         SET ${setClause}, 
              last_updated = CURRENT_TIMESTAMP,
              created_at = COALESCE(created_at, CURRENT_TIMESTAMP)
-         WHERE id = $1
+         WHERE id = $1 
          RETURNING *`,
         values
       );
 
-      return decryptRow(result.rows[0], SENSITIVE_FIELDS.inventory);
+      return result.rows[0];
     } catch (error) {
       logger.error('Error adding quantity to inventory item:', error);
       throw error;
     }
   }
-
-  /**
-   * Bulk update inventory from receipt items (transactional)
-   * Ensures all items are updated together or none are updated
-   * @param {string} userId - User ID
-   * @param {Array} items - Array of {itemName, quantity, unit, category}
-   * @returns {Promise<Array>} - Array of updated/created inventory items
-   */
-  static async bulkUpdateFromReceipt(userId, items) {
-    return withTransaction(async (client) => {
-      const results = [];
-
-      for (const item of items) {
-        // Use INSERT ... ON CONFLICT to handle race conditions
-        // This is safer than SELECT then INSERT/UPDATE
-        const result = await client.query(
-          `INSERT INTO inventory (user_id, item_name, quantity, unit, category, last_purchase_date, last_purchase_quantity)
-           VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, $3)
-           ON CONFLICT (user_id, item_name)
-           DO UPDATE SET
-             quantity = inventory.quantity + EXCLUDED.quantity,
-             last_purchase_date = CURRENT_TIMESTAMP,
-             last_purchase_quantity = EXCLUDED.last_purchase_quantity,
-             last_updated = CURRENT_TIMESTAMP
-           RETURNING *`,
-          [userId, item.itemName, item.quantity, item.unit, item.category || 'others']
-        );
-        results.push(result.rows[0]);
-      }
-
-      logger.info('Bulk inventory update completed', {
-        userId,
-        itemCount: items.length,
-        resultsCount: results.length,
-      });
-
-      return results;
-    });
-  }
 }
 
 /**
  * Preferences Model
- * ENCRYPTION: brand_prefs JSONB is encrypted before storage
+ * Handles user preferences for spending, brands, and vendors
  */
 class Preferences {
+  /**
+   * Get user preferences
+   */
   static async findByUser(userId = 'demo_user') {
     try {
       const result = await db.query(
         'SELECT * FROM preferences WHERE user_id = $1',
         [userId]
       );
-      return decryptRow(result.rows[0], SENSITIVE_FIELDS.preferences);
+      return result.rows[0];
     } catch (error) {
       logger.error('Error fetching preferences:', error);
       throw error;
     }
   }
 
+  /**
+   * Create or update preferences (upsert)
+   */
   static async upsert(userId, prefsData) {
     const {
+      max_spend,
+      approval_mode,
+      auto_approve_limit,
       brand_prefs,
       allowed_vendors,
       notify_low_inventory,
       notify_order_ready,
-      auto_order_enabled,
-      auto_order_threshold_days,
     } = prefsData;
 
     try {
       const result = await db.query(
         `INSERT INTO preferences 
-         (user_id, brand_prefs, allowed_vendors, 
-          notify_low_inventory, notify_order_ready, auto_order_enabled, auto_order_threshold_days)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         (user_id, max_spend, approval_mode, auto_approve_limit, brand_prefs, allowed_vendors, 
+          notify_low_inventory, notify_order_ready)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          ON CONFLICT (user_id) 
          DO UPDATE SET
+           max_spend = EXCLUDED.max_spend,
+           approval_mode = EXCLUDED.approval_mode,
+           auto_approve_limit = EXCLUDED.auto_approve_limit,
            brand_prefs = EXCLUDED.brand_prefs,
            allowed_vendors = EXCLUDED.allowed_vendors,
            notify_low_inventory = EXCLUDED.notify_low_inventory,
            notify_order_ready = EXCLUDED.notify_order_ready,
-           auto_order_enabled = EXCLUDED.auto_order_enabled,
-           auto_order_threshold_days = EXCLUDED.auto_order_threshold_days,
            updated_at = CURRENT_TIMESTAMP
          RETURNING *`,
-        [
-          userId,
-          JSON.stringify(brand_prefs),
-          JSON.stringify(allowed_vendors),
-          notify_low_inventory,
-          notify_order_ready,
-          auto_order_enabled,
-          auto_order_threshold_days
-        ]
+        [userId, max_spend, approval_mode, auto_approve_limit, 
+         JSON.stringify(brand_prefs), JSON.stringify(allowed_vendors),
+         notify_low_inventory, notify_order_ready]
       );
-      return decryptRow(result.rows[0], SENSITIVE_FIELDS.preferences);
+      return result.rows[0];
     } catch (error) {
       logger.error('Error upserting preferences:', error);
       throw error;
     }
   }
 
+  /**
+   * Update specific preference fields
+   */
   static async update(userId, updates) {
     const allowedFields = [
-      'brand_prefs', 
-      'allowed_vendors', 'notify_low_inventory', 'notify_order_ready',
-      'auto_order_enabled', 'auto_order_threshold_days'
+      'max_spend', 'approval_mode', 'auto_approve_limit', 'brand_prefs', 
+      'allowed_vendors', 'notify_low_inventory', 'notify_order_ready'
     ];
-
+    
     const fields = Object.keys(updates).filter(key => allowedFields.includes(key));
-
+    
     if (fields.length === 0) {
       throw new Error('No valid fields to update');
     }
 
+    const setClause = fields.map((field, idx) => {
+      // JSON fields need special handling
+      if (['brand_prefs', 'allowed_vendors'].includes(field)) {
+        return `${field} = $${idx + 2}::jsonb`;
+      }
+      return `${field} = $${idx + 2}`;
+    }).join(', ');
+
+    const values = [
+      userId, 
+      ...fields.map(field => 
+        ['brand_prefs', 'allowed_vendors'].includes(field) 
+          ? JSON.stringify(updates[field]) 
+          : updates[field]
+      )
+    ];
+
     try {
-      const encryptedUpdates = prepareUpdate(updates, SENSITIVE_FIELDS.preferences);
-
-      const finalFields = Object.keys(encryptedUpdates).filter(key => allowedFields.includes(key) || key === 'is_encrypted');
-      const setClause = finalFields.map((field, idx) => {
-        if (['brand_prefs', 'allowed_vendors'].includes(field)) {
-          return `${field} = $${idx + 2}::jsonb`;
-        }
-        return `${field} = $${idx + 2}`;
-      }).join(', ');
-
-      const values = [
-        userId,
-        ...finalFields.map(field =>
-          ['brand_prefs', 'allowed_vendors'].includes(field) && typeof encryptedUpdates[field] !== 'string'
-            ? JSON.stringify(encryptedUpdates[field])
-            : encryptedUpdates[field]
-        )
-      ];
-
       const result = await db.query(
-        `UPDATE preferences SET ${setClause}, updated_at = CURRENT_TIMESTAMP
+        `UPDATE preferences SET ${setClause}, updated_at = CURRENT_TIMESTAMP 
          WHERE user_id = $1 RETURNING *`,
         values
       );
-
-      return decryptRow(result.rows[0], SENSITIVE_FIELDS.preferences);
+      return result.rows[0];
     } catch (error) {
       logger.error('Error updating preferences:', error);
       throw error;
@@ -456,9 +392,12 @@ class Preferences {
 
 /**
  * Orders Model
- * ENCRYPTION: items JSONB, tracking_number, vendor_order_id are encrypted
+ * Handles order creation and approval workflow
  */
 class Orders {
+  /**
+   * Get all orders for a user
+   */
   static async findByUser(userId = 'demo_user', status = null) {
     try {
       let query = 'SELECT * FROM orders WHERE user_id = $1';
@@ -472,39 +411,48 @@ class Orders {
       query += ' ORDER BY created_at DESC';
 
       const result = await db.query(query, params);
-      return decryptRows(result.rows, SENSITIVE_FIELDS.orders);
+      return result.rows;
     } catch (error) {
       logger.error('Error fetching orders:', error);
       throw error;
     }
   }
 
+  /**
+   * Get pending orders (using view)
+   */
   static async findPending(userId = 'demo_user') {
     try {
       const result = await db.query(
         'SELECT * FROM pending_orders WHERE user_id = $1',
         [userId]
       );
-      return decryptRows(result.rows, SENSITIVE_FIELDS.orders);
+      return result.rows;
     } catch (error) {
       logger.error('Error fetching pending orders:', error);
       throw error;
     }
   }
 
+  /**
+   * Get order by ID
+   */
   static async findById(id) {
     try {
       const result = await db.query(
         'SELECT * FROM orders WHERE id = $1',
         [id]
       );
-      return decryptRow(result.rows[0], SENSITIVE_FIELDS.orders);
+      return result.rows[0];
     } catch (error) {
       logger.error('Error fetching order by ID:', error);
       throw error;
     }
   }
 
+  /**
+   * Create new order
+   */
   static async create(orderData) {
     const {
       user_id = 'demo_user',
@@ -514,120 +462,101 @@ class Orders {
       tax = 0,
       shipping = 0,
       total,
-      status = 'placed', // Changed from 'pending' to 'placed'
-      vendor_order_id = null,
-      tracking_number = null,
-      delivery_date = null,
+      status = 'pending',
     } = orderData;
 
     try {
-      const encryptedData = prepareInsert(
-        { items },
-        SENSITIVE_FIELDS.orders
-      );
-
       const result = await db.query(
         `INSERT INTO orders 
          (user_id, vendor, items, subtotal, tax, shipping, total, status)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          RETURNING *`,
-        [
-          user_id,
-          vendor,
-          encryptedData.items || JSON.stringify(items),
-          subtotal,
-          tax,
-          shipping,
-          total,
-          status,
-          encryptedData.is_encrypted || false
-        ]
+        [user_id, vendor, JSON.stringify(items), subtotal, tax, shipping, total, status]
       );
-
-      return decryptRow(result.rows[0], SENSITIVE_FIELDS.orders);
+      return result.rows[0];
     } catch (error) {
       logger.error('Error creating order:', error);
       throw error;
     }
   }
 
+  /**
+   * Approve order
+   */
   static async approve(id, notes = null) {
     try {
       const result = await db.query(
-        `UPDATE orders
-         SET status = 'approved',
+        `UPDATE orders 
+         SET status = 'approved', 
              approved_at = CURRENT_TIMESTAMP,
              approval_notes = $2
          WHERE id = $1 AND status = 'pending'
          RETURNING *`,
         [id, notes]
       );
-      return decryptRow(result.rows[0], SENSITIVE_FIELDS.orders);
+      return result.rows[0];
     } catch (error) {
       logger.error('Error approving order:', error);
       throw error;
     }
   }
 
+  /**
+   * Reject order
+   */
   static async reject(id, notes = null) {
     try {
       const result = await db.query(
-        `UPDATE orders
+        `UPDATE orders 
          SET status = 'rejected',
              approval_notes = $2
          WHERE id = $1 AND status = 'pending'
          RETURNING *`,
         [id, notes]
       );
-      return decryptRow(result.rows[0], SENSITIVE_FIELDS.orders);
+      return result.rows[0];
     } catch (error) {
       logger.error('Error rejecting order:', error);
       throw error;
     }
   }
 
+  /**
+   * Mark order as placed with vendor
+   */
   static async markPlaced(id, vendorOrderId, trackingNumber = null) {
     try {
-      const encryptedData = prepareUpdate(
-        { vendor_order_id: vendorOrderId, tracking_number: trackingNumber },
-        SENSITIVE_FIELDS.orders
-      );
-
       const result = await db.query(
-        `UPDATE orders
+        `UPDATE orders 
          SET status = 'placed',
              placed_at = CURRENT_TIMESTAMP,
              vendor_order_id = $2,
-             tracking_number = $3,
-             is_encrypted = $4
+             tracking_number = $3
          WHERE id = $1 AND status = 'approved'
          RETURNING *`,
-        [
-          id,
-          encryptedData.vendor_order_id || vendorOrderId,
-          encryptedData.tracking_number || trackingNumber,
-          encryptedData.is_encrypted || false
-        ]
+        [id, vendorOrderId, trackingNumber]
       );
-
-      return decryptRow(result.rows[0], SENSITIVE_FIELDS.orders);
+      return result.rows[0];
     } catch (error) {
       logger.error('Error marking order as placed:', error);
       throw error;
     }
   }
 
+  /**
+   * Mark order as delivered
+   */
   static async markDelivered(id) {
     try {
       const result = await db.query(
-        `UPDATE orders
+        `UPDATE orders 
          SET status = 'delivered',
              delivered_at = CURRENT_TIMESTAMP
          WHERE id = $1 AND status = 'placed'
          RETURNING *`,
         [id]
       );
-      return decryptRow(result.rows[0], SENSITIVE_FIELDS.orders);
+      return result.rows[0];
     } catch (error) {
       logger.error('Error marking order as delivered:', error);
       throw error;
@@ -637,60 +566,49 @@ class Orders {
 
 /**
  * Cart Model
- * ENCRYPTION: item_name is encrypted
+ * Handles shopping cart/list operations before items become orders
  */
 class Cart {
-  /**
-   * Format item name to title case (capitalize first letter of each word)
-   * @param {string} itemName - Original item name
-   * @returns {string} - Formatted item name
-   */
-  static formatItemName(itemName) {
-    if (!itemName || typeof itemName !== 'string') return itemName;
-    
-    return itemName
-      .toLowerCase()
-      .split(' ')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ')
-      .trim();
-  }
-
   /**
    * Get all cart items for a user
    */
   static async findByUser(userId = 'demo_user') {
     try {
       const result = await db.query(
-        'SELECT * FROM cart WHERE user_id = $1 ORDER BY created_at DESC',
+        'SELECT * FROM cart WHERE user_id = $1 ORDER BY added_at DESC',
         [userId]
       );
-      return decryptRows(result.rows, SENSITIVE_FIELDS.cart);
+      return result.rows;
     } catch (error) {
       logger.error('Error fetching cart items:', error);
       throw error;
     }
   }
 
+  /**
+   * Get single cart item by ID
+   */
   static async findById(id) {
     try {
       const result = await db.query(
         'SELECT * FROM cart WHERE id = $1',
         [id]
       );
-      return decryptRow(result.rows[0], SENSITIVE_FIELDS.cart);
+      return result.rows[0];
     } catch (error) {
       logger.error('Error fetching cart item by ID:', error);
       throw error;
     }
   }
 
+  /**
+   * Find cart item by name and user
+   */
   static async findByName(userId, itemName) {
     try {
-      const formattedItemName = this.formatItemName(itemName);
       const result = await db.query(
         'SELECT * FROM cart WHERE user_id = $1 AND item_name = $2',
-        [userId, formattedItemName]
+        [userId, itemName]
       );
       return result.rows[0];
     } catch (error) {
@@ -699,113 +617,136 @@ class Cart {
     }
   }
 
-  static async addItem(userId, itemData) {
+  /**
+   * Add item to cart (or update quantity if exists)
+   */
+  static async addItem(itemData) {
     const {
+      user_id = 'demo_user',
       item_name,
       quantity,
       unit,
-      estimated_price = 0,
       category,
-      brand,
-      priority = 1,
+      estimated_price,
+      notes,
+      source = 'manual',
     } = itemData;
 
     try {
-      const encryptedData = prepareInsert(
-        { user_id: userId, item_name, quantity, unit, estimated_price, category, brand, priority },
-        SENSITIVE_FIELDS.cart
-      );
-
-      const result = await db.query(
-        `INSERT INTO cart
-         (user_id, item_name, quantity, unit, estimated_price, category, brand, priority, is_encrypted)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-         RETURNING *`,
-        [
-          encryptedData.user_id,
-          encryptedData.item_name,
-          encryptedData.quantity,
-          encryptedData.unit,
-          encryptedData.estimated_price,
-          encryptedData.category,
-          encryptedData.brand,
-          encryptedData.priority,
-          encryptedData.is_encrypted
-        ]
-      );
-
-      return decryptRow(result.rows[0], SENSITIVE_FIELDS.cart);
+      // Check if item already exists in cart
+      const existing = await this.findByName(user_id, item_name);
+      
+      if (existing) {
+        // Update quantity
+        const newQuantity = parseFloat(existing.quantity) + parseFloat(quantity);
+        const result = await db.query(
+          `UPDATE cart 
+           SET quantity = $1, updated_at = CURRENT_TIMESTAMP
+           WHERE id = $2
+           RETURNING *`,
+          [newQuantity, existing.id]
+        );
+        return result.rows[0];
+      } else {
+        // Insert new item
+        const result = await db.query(
+          `INSERT INTO cart 
+           (user_id, item_name, quantity, unit, category, estimated_price, notes, source)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+           RETURNING *`,
+          [user_id, item_name, quantity, unit, category, estimated_price, notes, source]
+        );
+        return result.rows[0];
+      }
     } catch (error) {
       logger.error('Error adding item to cart:', error);
       throw error;
     }
   }
 
+  /**
+   * Update cart item quantity
+   */
   static async updateQuantity(id, quantity) {
     try {
       const result = await db.query(
-        'UPDATE cart SET quantity = $2 WHERE id = $1 RETURNING *',
+        `UPDATE cart 
+         SET quantity = $2, updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1
+         RETURNING *`,
         [id, quantity]
       );
-      return decryptRow(result.rows[0], SENSITIVE_FIELDS.cart);
+      return result.rows[0];
     } catch (error) {
       logger.error('Error updating cart item quantity:', error);
       throw error;
     }
   }
 
+  /**
+   * Update cart item
+   */
   static async update(id, updates) {
-    const allowedFields = ['quantity', 'unit', 'estimated_price', 'category', 'brand', 'priority'];
+    const allowedFields = ['quantity', 'unit', 'category', 'estimated_price', 'notes'];
     const fields = Object.keys(updates).filter(key => allowedFields.includes(key));
-
+    
     if (fields.length === 0) {
       throw new Error('No valid fields to update');
     }
 
-    try {
-      const encryptedUpdates = prepareUpdate(updates, SENSITIVE_FIELDS.cart);
-      const finalFields = Object.keys(encryptedUpdates).filter(key => allowedFields.includes(key) || key === 'is_encrypted');
-      const setClause = finalFields.map((field, idx) => `${field} = $${idx + 2}`).join(', ');
-      const values = [id, ...finalFields.map(field => encryptedUpdates[field])];
+    const setClause = fields.map((field, idx) => `${field} = $${idx + 2}`).join(', ');
+    const values = [id, ...fields.map(field => updates[field])];
 
+    try {
       const result = await db.query(
-        `UPDATE cart SET ${setClause} WHERE id = $1 RETURNING *`,
+        `UPDATE cart 
+         SET ${setClause}, updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1 
+         RETURNING *`,
         values
       );
-
-      return decryptRow(result.rows[0], SENSITIVE_FIELDS.cart);
+      return result.rows[0];
     } catch (error) {
       logger.error('Error updating cart item:', error);
       throw error;
     }
   }
 
-  static async remove(id) {
+  /**
+   * Remove item from cart
+   */
+  static async removeItem(id) {
     try {
       const result = await db.query(
         'DELETE FROM cart WHERE id = $1 RETURNING *',
         [id]
       );
-      return decryptRow(result.rows[0], SENSITIVE_FIELDS.cart);
+      return result.rows[0];
     } catch (error) {
       logger.error('Error removing item from cart:', error);
       throw error;
     }
   }
 
-  static async clear(userId = 'demo_user') {
+  /**
+   * Clear all cart items for a user
+   */
+  static async clearCart(userId = 'demo_user') {
     try {
       const result = await db.query(
         'DELETE FROM cart WHERE user_id = $1 RETURNING *',
         [userId]
       );
-      return decryptRows(result.rows, SENSITIVE_FIELDS.cart);
+      return result.rows;
     } catch (error) {
       logger.error('Error clearing cart:', error);
       throw error;
     }
   }
 
+  /**
+   * Get cart total count
+   */
   static async getCount(userId = 'demo_user') {
     try {
       const result = await db.query(
@@ -819,13 +760,16 @@ class Cart {
     }
   }
 
+  /**
+   * Get cart total estimated price
+   */
   static async getTotalPrice(userId = 'demo_user') {
     try {
       const result = await db.query(
         'SELECT SUM(estimated_price * quantity) as total FROM cart WHERE user_id = $1',
         [userId]
       );
-      return parseFloat(result.rows[0].total) || 0;
+      return parseFloat(result.rows[0].total || 0);
     } catch (error) {
       logger.error('Error getting cart total price:', error);
       throw error;
