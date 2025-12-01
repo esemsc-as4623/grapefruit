@@ -103,6 +103,30 @@ describe('Grapefruit Backend Integration Tests', () => {
   beforeAll(async () => {
     // Ensure database connection
     await db.query('SELECT NOW()');
+    
+    // Create consumption_history table if it doesn't exist
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS consumption_history (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        user_id VARCHAR(255) NOT NULL,
+        item_name VARCHAR(255) NOT NULL,
+        quantity_before DECIMAL(10, 2) NOT NULL,
+        quantity_after DECIMAL(10, 2) NOT NULL,
+        quantity_consumed DECIMAL(10, 2) NOT NULL,
+        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        days_elapsed DECIMAL(10, 4),
+        days_in_inventory DECIMAL(10, 4),
+        event_type VARCHAR(50) NOT NULL,
+        source VARCHAR(50),
+        unit VARCHAR(50),
+        category VARCHAR(100)
+      );
+      
+      CREATE INDEX IF NOT EXISTS idx_consumption_user_item ON consumption_history(user_id, item_name);
+      CREATE INDEX IF NOT EXISTS idx_consumption_timestamp ON consumption_history(timestamp DESC);
+      CREATE INDEX IF NOT EXISTS idx_consumption_user_timestamp ON consumption_history(user_id, timestamp DESC);
+      CREATE INDEX IF NOT EXISTS idx_consumption_event_type ON consumption_history(event_type);
+    `);
   });
 
   afterAll(async () => {

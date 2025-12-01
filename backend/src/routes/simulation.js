@@ -3,6 +3,7 @@ const Joi = require('joi');
 const { Inventory, Orders, Preferences, Cart } = require('../models/db');
 const db = require('../config/database');
 const logger = require('../utils/logger');
+const consumptionLearner = require('../services/consumptionLearner');
 
 const router = express.Router();
 
@@ -130,18 +131,48 @@ router.post('/day', async (req, res, next) => {
     const itemsWithConsumption = items.filter(item => item.average_daily_consumption);
     const itemsWithoutConsumption = items.filter(item => !item.average_daily_consumption);
     
-    // ALWAYS deplete items with known consumption rates
+    // Deplete items with known consumption rates with realistic variability
     for (const item of itemsWithConsumption) {
       const stepSize = getStepSize(item.unit);
-      const consumption = item.average_daily_consumption * 1; // 1 day
+      const baseConsumption = item.average_daily_consumption * 1; // 1 day
       
-      // Round consumption to match step size, but ensure at least one step of depletion
-      let roundedConsumption = roundToStep(consumption, stepSize);
-      if (roundedConsumption === 0 && consumption > 0) {
-        roundedConsumption = stepSize; // Ensure at least one step of depletion
+      // Add realistic consumption variability
+      const rand = Math.random();
+      let actualConsumption;
+      
+      if (rand < 0.70) {
+        // 70% chance: consume at average rate
+        actualConsumption = baseConsumption;
+      } else if (rand < 0.90) {
+        // 20% chance: consume more than average (up to 2x or entire quantity)
+        const maxExtra = Math.min(baseConsumption, item.quantity);
+        const extraConsumption = Math.random() * maxExtra;
+        actualConsumption = baseConsumption + extraConsumption;
+      } else {
+        // 10% chance: no consumption today
+        actualConsumption = 0;
       }
       
+      // Round consumption to match step size
+      let roundedConsumption = roundToStep(actualConsumption, stepSize);
+      
+      // Ensure we don't consume more than available
+      roundedConsumption = Math.min(roundedConsumption, item.quantity);
+      
       const newQuantity = Math.max(0, roundToStep(item.quantity - roundedConsumption, stepSize));
+      
+      // Record consumption event for ML learning
+      await consumptionLearner.recordConsumptionEvent({
+        userId,
+        itemName: item.item_name,
+        quantityBefore: item.quantity,
+        quantityAfter: newQuantity,
+        eventType: 'simulation',
+        source: 'simulation',
+        unit: item.unit,
+        category: item.category,
+        itemCreatedAt: item.created_at,
+      });
       
       // If quantity reaches 0 or goes below 0, delete and optionally add to cart
       if (newQuantity <= 0) {
@@ -176,7 +207,11 @@ router.post('/day', async (req, res, next) => {
         });
         
         updatedItems.push(updated);
-        logger.info(`Depleted ${item.item_name} by ${roundedConsumption.toFixed(2)} to ${newQuantity.toFixed(2)} ${item.unit}`);
+        if (roundedConsumption > 0) {
+          logger.info(`Depleted ${item.item_name} by ${roundedConsumption.toFixed(2)} to ${newQuantity.toFixed(2)} ${item.unit}`);
+        } else {
+          logger.info(`No consumption for ${item.item_name} today (${newQuantity.toFixed(2)} ${item.unit} remaining)`);
+        }
       }
     }
     
@@ -199,6 +234,18 @@ router.post('/day', async (req, res, next) => {
         
         if (shouldDelete) {
           // Delete item (user disposed of it)
+          await consumptionLearner.recordConsumptionEvent({
+            userId,
+            itemName: item.item_name,
+            quantityBefore: item.quantity,
+            quantityAfter: 0,
+            eventType: 'deletion',
+            source: 'simulation',
+            unit: item.unit,
+            category: item.category,
+            itemCreatedAt: item.created_at,
+          });
+          
           await Inventory.delete(item.id);
           deletedItems.push(item.item_name);
           logger.info(`Randomly deleted ${item.item_name}`);
@@ -210,6 +257,19 @@ router.post('/day', async (req, res, next) => {
           const stepsToDeplete = Math.floor(Math.random() * 3) + 1;
           const depletionAmount = stepsToDeplete * stepSize;
           const newQuantity = roundToStep(item.quantity - depletionAmount, stepSize);
+          
+          // Record consumption event for ML learning
+          await consumptionLearner.recordConsumptionEvent({
+            userId,
+            itemName: item.item_name,
+            quantityBefore: item.quantity,
+            quantityAfter: Math.max(0, newQuantity),
+            eventType: 'simulation',
+            source: 'simulation',
+            unit: item.unit,
+            category: item.category,
+            itemCreatedAt: item.created_at,
+          });
           
           if (newQuantity <= 0) {
             // Very low quantity - delete and add to cart
@@ -295,10 +355,17 @@ router.post('/day', async (req, res, next) => {
     // Get low inventory items (for informational purposes)
     const lowItems = await Inventory.findLowInventory(userId);
     
+    // ============================================
+    // ML LEARNING: Update consumption rates based on today's data
+    // ============================================
+    logger.info('Running ML learning to update consumption rates...');
+    const learningStats = await consumptionLearner.updateAllConsumptionRates(userId);
+    logger.info(`ML learning complete: ${learningStats.updated} rates updated using algorithms: ${JSON.stringify(learningStats.algorithms)}`);
+    
     logger.info(`Day simulation complete - ${updatedItems.length} items updated, ${deletedItems.length} items deleted, ${cartAddedItems.length} items added to cart, ${lowItems.length} items running low`);
     
     res.json({
-      message: 'Day simulation complete - time advanced by 1 day, items consumed',
+      message: 'Day simulation complete - time advanced by 1 day, items consumed, ML learning applied',
       time_advanced_days: 1,
       items_updated: updatedItems.length,
       items_deleted: deletedItems.length,
@@ -307,6 +374,7 @@ router.post('/day', async (req, res, next) => {
       cart_items: cartAddedItems,
       low_items_count: lowItems.length,
       items: updatedItems,
+      ml_learning: learningStats,
     });
   } catch (error) {
     next(error);
@@ -340,6 +408,19 @@ router.post('/consumption', async (req, res, next) => {
         const consumption = item.average_daily_consumption * days;
         const newQuantity = item.quantity - consumption;
         
+        // Record consumption event for ML learning
+        await consumptionLearner.recordConsumptionEvent({
+          userId,
+          itemName: item.item_name,
+          quantityBefore: item.quantity,
+          quantityAfter: Math.max(0, newQuantity),
+          eventType: 'simulation',
+          source: 'api',
+          unit: item.unit,
+          category: item.category,
+          itemCreatedAt: item.created_at,
+        });
+        
         // If quantity reaches 0 or goes below 0, delete the item from inventory
         if (newQuantity <= 0) {
           await Inventory.delete(item.id);
@@ -363,14 +444,19 @@ router.post('/consumption', async (req, res, next) => {
       }
     }
     
+    // Update consumption rates with ML learning
+    logger.info('Running ML learning to update consumption rates...');
+    const learningStats = await consumptionLearner.updateAllConsumptionRates(userId);
+    
     logger.info(`Consumption simulation complete - ${updatedItems.length} items updated, ${deletedItems.length} items deleted`);
     
     res.json({
-      message: `Simulated ${days} days of consumption`,
+      message: `Simulated ${days} days of consumption with ML learning`,
       items_updated: updatedItems.length,
       items_deleted: deletedItems.length,
       deleted_items: deletedItems,
       items: updatedItems,
+      ml_learning: learningStats,
     });
   } catch (error) {
     next(error);

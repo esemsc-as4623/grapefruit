@@ -2,6 +2,7 @@ const express = require('express');
 const Joi = require('joi');
 const { Inventory, Preferences, Orders, Cart } = require('../models/db');
 const logger = require('../utils/logger');
+const consumptionLearner = require('../services/consumptionLearner');
 
 const router = express.Router();
 
@@ -290,10 +291,45 @@ router.post('/inventory/bulk', async (req, res, next) => {
  */
 router.put('/inventory/:id', validateUUID('id'), async (req, res, next) => {
   try {
+    // Get current item state before update
+    const currentItem = await Inventory.findById(req.params.id);
+    if (!currentItem) {
+      return res.status(404).json({ error: { message: 'Item not found' } });
+    }
+    
     const item = await Inventory.update(req.params.id, req.body);
     
-    if (!item) {
-      return res.status(404).json({ error: { message: 'Item not found' } });
+    // Record consumption event if quantity changed
+    if (req.body.quantity !== undefined && req.body.quantity !== currentItem.quantity) {
+      await consumptionLearner.recordConsumptionEvent({
+        userId: currentItem.user_id,
+        itemName: currentItem.item_name,
+        quantityBefore: currentItem.quantity,
+        quantityAfter: req.body.quantity,
+        eventType: 'manual_update',
+        source: 'user',
+        unit: currentItem.unit,
+        category: currentItem.category,
+        itemCreatedAt: currentItem.created_at,
+      });
+      
+      // Update consumption rate with new data
+      const learningResult = await consumptionLearner.learnConsumptionRate(
+        currentItem.user_id,
+        currentItem.item_name,
+        {
+          category: currentItem.category,
+          unit: currentItem.unit,
+          daysInInventory: (Date.now() - new Date(currentItem.created_at).getTime()) / (1000 * 60 * 60 * 24),
+        }
+      );
+      
+      // Update the item with learned consumption rate if we got a good estimate
+      if (learningResult.rate && learningResult.confidence !== 'very_low') {
+        await Inventory.update(req.params.id, {
+          average_daily_consumption: learningResult.rate,
+        });
+      }
     }
     
     logger.info(`Inventory item updated: ${item.id}`);
@@ -309,11 +345,26 @@ router.put('/inventory/:id', validateUUID('id'), async (req, res, next) => {
  */
 router.delete('/inventory/:id', validateUUID('id'), async (req, res, next) => {
   try {
-    const item = await Inventory.delete(req.params.id);
-    
-    if (!item) {
+    // Get item before deleting to record consumption
+    const currentItem = await Inventory.findById(req.params.id);
+    if (!currentItem) {
       return res.status(404).json({ error: { message: 'Item not found' } });
     }
+    
+    // Record deletion as consumption event
+    await consumptionLearner.recordConsumptionEvent({
+      userId: currentItem.user_id,
+      itemName: currentItem.item_name,
+      quantityBefore: currentItem.quantity,
+      quantityAfter: 0,
+      eventType: 'deletion',
+      source: 'user',
+      unit: currentItem.unit,
+      category: currentItem.category,
+      itemCreatedAt: currentItem.created_at,
+    });
+    
+    const item = await Inventory.delete(req.params.id);
     
     logger.info(`Inventory item deleted: ${item.id}`);
     res.json({ message: 'Item deleted successfully', item });
