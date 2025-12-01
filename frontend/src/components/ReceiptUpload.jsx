@@ -7,7 +7,7 @@ const ReceiptUpload = ({ onReceiptParsed }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
-  const [uploadMode, setUploadMode] = useState('text'); // 'text' or 'file'
+  const [uploadMode, setUploadMode] = useState('file'); // 'text' or 'file' - default to file
 
   // Handle text input
   const handleTextChange = (e) => {
@@ -150,17 +150,6 @@ const ReceiptUpload = ({ onReceiptParsed }) => {
       {/* Upload Mode Toggle */}
       <div className="flex gap-2 mb-4">
         <button
-          onClick={() => setUploadMode('text')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            uploadMode === 'text'
-              ? 'bg-grapefruit-500 text-white'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
-        >
-          <FileText className="w-4 h-4 inline mr-1" />
-          Paste Text
-        </button>
-        <button
           onClick={() => setUploadMode('file')}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
             uploadMode === 'file'
@@ -170,6 +159,17 @@ const ReceiptUpload = ({ onReceiptParsed }) => {
         >
           <Upload className="w-4 h-4 inline mr-1" />
           Upload File
+        </button>
+        <button
+          onClick={() => setUploadMode('text')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            uploadMode === 'text'
+              ? 'bg-grapefruit-500 text-white'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          <FileText className="w-4 h-4 inline mr-1" />
+          Paste Text
         </button>
       </div>
 
