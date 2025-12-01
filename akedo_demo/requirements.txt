@@ -1,3 +1,4 @@
+# Core
 fastapi
 uvicorn
 streamlit
@@ -6,3 +7,14 @@ langchain-openai
 langgraph
 requests
 python-dotenv
+
+# Image processing
+Pillow
+opencv-python
+imutils
+
+# Edge OCR engines (install at least one)
+pytesseract          # Fastest, requires: brew install tesseract
+easyocr              # Better accuracy, larger model
+# paddlepaddle       # Uncomment for PaddleOCR (best accuracy)
+# paddleocr          # Uncomment for PaddleOCR
