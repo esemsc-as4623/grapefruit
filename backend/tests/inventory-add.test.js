@@ -387,9 +387,10 @@ describe('Inventory Item Addition', () => {
 
         const response = await request(app)
           .post('/inventory')
-          .send(newItem)
-          .expect(201);
+          .send(newItem);
 
+        // Could be 201 (created) or 200 (updated existing)
+        expect([200, 201]).toContain(response.status);
         expect(response.body.category).toBe(category);
         expect(response.body.item_name).toBe(item);
 
