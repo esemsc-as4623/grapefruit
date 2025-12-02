@@ -67,7 +67,7 @@ INSERT INTO inventory (item_name, quantity, unit, category, predicted_runout, av
 ('Peppers', 3.0, 'count', 'produce', NULL, NULL, CURRENT_TIMESTAMP - INTERVAL '2 days', 4.0, CURRENT_TIMESTAMP - INTERVAL '2 days', CURRENT_TIMESTAMP - INTERVAL '2 days'),
 ('Lemon', 2.0, 'count', 'produce', NULL, NULL, CURRENT_TIMESTAMP - INTERVAL '4 days', 3.0, CURRENT_TIMESTAMP - INTERVAL '4 days', CURRENT_TIMESTAMP - INTERVAL '4 days'),
 ('Onion', 1.2, 'pound', 'produce', NULL, NULL, CURRENT_TIMESTAMP - INTERVAL '5 days', 2.0, CURRENT_TIMESTAMP - INTERVAL '5 days', CURRENT_TIMESTAMP - INTERVAL '5 days'),
-('Garlic', 6.0, 'clove', 'produce', NULL, NULL, CURRENT_TIMESTAMP - INTERVAL '1 week', 10.0, CURRENT_TIMESTAMP - INTERVAL '1 week', CURRENT_TIMESTAMP - INTERVAL '1 week'),
+('Garlic', 4.0, 'count', 'produce', NULL, NULL, CURRENT_TIMESTAMP - INTERVAL '1 week', 10.0, CURRENT_TIMESTAMP - INTERVAL '1 week', CURRENT_TIMESTAMP - INTERVAL '1 week'),
 ('Ginger', 4.5, 'ounce', 'produce', NULL, NULL, CURRENT_TIMESTAMP - INTERVAL '6 days', 6.0, CURRENT_TIMESTAMP - INTERVAL '6 days', CURRENT_TIMESTAMP - INTERVAL '6 days'),
 ('Tomatoes', 1.5, 'pound', 'produce', NULL, NULL, CURRENT_TIMESTAMP - INTERVAL '3 days', 2.0, CURRENT_TIMESTAMP - INTERVAL '3 days', CURRENT_TIMESTAMP - INTERVAL '3 days'),
 ('Grapes', 1.0, 'pound', 'produce', NULL, NULL, CURRENT_TIMESTAMP - INTERVAL '2 days', 1.5, CURRENT_TIMESTAMP - INTERVAL '2 days', CURRENT_TIMESTAMP - INTERVAL '2 days');
