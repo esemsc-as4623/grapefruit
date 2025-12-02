@@ -32,6 +32,7 @@ const validateUUID = (paramName) => (req, res, next) => {
 // VALIDATION SCHEMAS
 // ============================================
 const inventorySchema = Joi.object({
+  user_id: Joi.string().optional(), // Allow user_id to be passed, defaults to 'demo_user' if not provided
   item_name: Joi.string().required().max(255),
   quantity: Joi.number().min(0).required(),
   unit: Joi.string().required().max(50),

@@ -305,10 +305,10 @@ class Inventory {
       const results = [];
 
       for (const item of items) {
-        // Check if item exists
+        // Check if item exists (matching the unique_user_item constraint: user_id + item_name)
         const existing = await client.query(
-          'SELECT * FROM inventory WHERE user_id = $1 AND LOWER(item_name) = LOWER($2) AND unit = $3',
-          [userId, item.itemName, item.unit]
+          'SELECT * FROM inventory WHERE user_id = $1 AND LOWER(item_name) = LOWER($2)',
+          [userId, item.itemName]
         );
 
         if (existing.rows.length > 0) {

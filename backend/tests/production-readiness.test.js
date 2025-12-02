@@ -447,31 +447,37 @@ describe('Production Readiness Tests', () => {
     test('should rollback bulkUpdateFromReceipt on partial failure', async () => {
       const testUserId = 'bulk_receipt_fail_user';
 
-      // Create a conflicting item that will cause issues
+      // Create an existing item
       await pool.query(
         `INSERT INTO inventory (user_id, item_name, quantity, unit, category)
-         VALUES ($1, 'Conflict_Item', 10, 'count', 'test')`,
+         VALUES ($1, 'Existing_Item', 10, 'count', 'test')`,
         [testUserId]
       );
 
       const receiptItems = [
-        { itemName: 'Good_Item', quantity: 5, unit: 'count', category: 'test' },
-        // This will cause a constraint violation if we try to insert with wrong unit for existing item
-        { itemName: 'Conflict_Item', quantity: 5, unit: 'gallon', category: 'test' }, // Different unit!
+        { itemName: 'New_Item', quantity: 5, unit: 'count', category: 'test' },
+        // This item already exists, so it should be updated (quantity added)
+        { itemName: 'Existing_Item', quantity: 5, unit: 'gallon', category: 'test' }, // Different unit, but same name
       ];
 
       try {
-        // This should succeed because bulkUpdateFromReceipt checks for existing items by name AND unit
+        // bulkUpdateFromReceipt should update the existing item (because of unique_user_item constraint on name only)
         await Inventory.bulkUpdateFromReceipt(testUserId, receiptItems);
         
-        // Verify items were created
+        // Verify the results
         const result = await pool.query(
-          'SELECT COUNT(*) FROM inventory WHERE user_id = $1',
+          'SELECT * FROM inventory WHERE user_id = $1 ORDER BY item_name',
           [testUserId]
         );
         
-        // Should have 3 items: original Conflict_Item(count), Good_Item(count), and Conflict_Item(gallon)
-        expect(parseInt(result.rows[0].count)).toBe(3);
+        // Should have 2 items: Existing_Item (updated to 15) and New_Item (5)
+        expect(result.rows.length).toBe(2);
+        
+        const existingItem = result.rows.find(r => r.item_name === 'Existing_Item');
+        expect(parseFloat(existingItem.quantity)).toBe(15); // 10 + 5
+        
+        const newItem = result.rows.find(r => r.item_name === 'New_Item');
+        expect(parseFloat(newItem.quantity)).toBe(5);
       } finally {
         // Cleanup
         await pool.query('DELETE FROM inventory WHERE user_id = $1', [testUserId]);
