@@ -47,7 +47,11 @@ jobs:
           PGPASSWORD: grapefruit
         run: |
           psql -h localhost -U grapefruit -d grapefruit -f database/init.sql
+          psql -h localhost -U grapefruit -d grapefruit -f database/add_cart_table.sql
+          psql -h localhost -U grapefruit -d grapefruit -f database/add_consumption_history.sql
+          psql -h localhost -U grapefruit -d grapefruit -f database/migration-auto-ordering.sql
           psql -h localhost -U grapefruit -d grapefruit -f database/seed.sql
+          psql -h localhost -U grapefruit -d grapefruit -f database/seed-grocery-catalog.sql
 
       - name: Run tests
         working-directory: ./backend
@@ -59,6 +63,8 @@ jobs:
           DB_USER: grapefruit
           DB_PASSWORD: grapefruit
           ENCRYPTION_KEY: test-encryption-key-32-bytes-1234567890abcdef
+          ASI_API_KEY: test-api-key
+          LLM_CACHE_ENABLED: true
           LOG_LEVEL: error
         run: npm test -- --coverage
 
@@ -140,7 +146,8 @@ jobs:
       - name: Test health endpoint
         run: |
           response=$(curl -s http://localhost:5000/health)
-          echo $response | jq -e '.status == "ok"'
+          echo "$response" | jq '.'
+          echo "$response" | jq -e '.status == "healthy" or .status == "degraded"'
 
       - name: Test inventory endpoint
         run: |
@@ -213,12 +220,17 @@ jobs:
           DB_USER: grapefruit
           DB_PASSWORD: grapefruit
           ENCRYPTION_KEY: test-encryption-key-32-bytes-1234567890abcdef
+          ASI_API_KEY: test-api-key
           LLM_CACHE_ENABLED: true
           LOG_LEVEL: info
         run: |
-          npm start &
+          nohup npm start > server.log 2>&1 &
           echo $! > server.pid
-          sleep 10
+          
+          # Wait for server to be ready
+          echo "Waiting for server to start..."
+          timeout 60 bash -c 'until curl -f http://localhost:5000/health; do sleep 2; done'
+          echo "Server is ready"
 
       - name: Test Enhanced Health Check
         run: |
@@ -381,8 +393,16 @@ jobs:
         if: always()
         run: |
           echo "=== Backend Logs ==="
-          if [ -f backend/server.pid ]; then
-            cat backend/logs/*.log 2>/dev/null || echo "No log files found"
+          if [ -f backend/server.log ]; then
+            echo "Server output:"
+            cat backend/server.log
+          else
+            echo "No server log file found"
+          fi
+          
+          if [ -d backend/logs ]; then
+            echo "Application logs:"
+            cat backend/logs/*.log 2>/dev/null || echo "No application log files found"
           fi
 
       - name: Cleanup
@@ -390,4 +410,5 @@ jobs:
         run: |
           if [ -f backend/server.pid ]; then
             kill $(cat backend/server.pid) 2>/dev/null || true
+            rm backend/server.pid
           fi

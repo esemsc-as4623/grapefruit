@@ -15,6 +15,7 @@ describe('Production Readiness Tests', () => {
   let testPool;
 
   beforeAll(async () => {
+    // Migrations are run in global setup (tests/setup.js)
     // Create a separate pool for testing
     testPool = new Pool({
       host: process.env.DB_HOST || 'localhost',
