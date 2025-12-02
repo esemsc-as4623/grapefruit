@@ -189,6 +189,155 @@ class AutoOrderScheduler {
   }
 
   /**
+   * Job 4: Auto-add low stock items to cart (when auto-order is enabled)
+   * Runs every 15 minutes
+   */
+  async autoAddLowStockToCart() {
+    const jobName = 'auto_add_low_stock_to_cart';
+    const jobId = await this.logJobStart(jobName);
+
+    try {
+      logger.info('Running job: auto_add_low_stock_to_cart');
+
+      // Query to find users with auto-order enabled
+      const usersResult = await db.query(
+        'SELECT user_id FROM preferences WHERE auto_order_enabled = true'
+      );
+
+      const users = usersResult.rows;
+      
+      if (users.length === 0) {
+        logger.debug('No users have auto-order enabled');
+        await this.logJobComplete(jobId, 'completed', {
+          items_processed: 0,
+          metadata: { message: 'No users with auto-order enabled' },
+        });
+        return { items_added: 0, users_processed: 0 };
+      }
+
+      let totalItemsAdded = 0;
+      const results = [];
+
+      // Process each user with auto-order enabled
+      for (const user of users) {
+        const userId = user.user_id;
+        
+        try {
+          // Get low-stock items for this user
+          const lowStockResult = await db.query(
+            'SELECT * FROM low_inventory WHERE user_id = $1',
+            [userId]
+          );
+
+          const lowStockItems = lowStockResult.rows;
+
+          if (lowStockItems.length === 0) {
+            logger.debug(`No low-stock items for user: ${userId}`);
+            continue;
+          }
+
+          // Get existing cart items to avoid duplicates
+          const cartResult = await db.query(
+            'SELECT item_name FROM cart WHERE user_id = $1',
+            [userId]
+          );
+          
+          const existingItemNames = new Set(
+            cartResult.rows.map(item => item.item_name.toLowerCase())
+          );
+
+          let itemsAddedForUser = 0;
+
+          // Add each low-stock item to cart if not already there
+          for (const lowItem of lowStockItems) {
+            if (existingItemNames.has(lowItem.item_name.toLowerCase())) {
+              logger.debug(`Skipping ${lowItem.item_name} - already in cart`);
+              continue;
+            }
+
+            // Determine reorder quantity
+            const reorderQuantity = lowItem.last_purchase_quantity || 1;
+
+            // Get price from catalog (best effort)
+            let estimatedPrice = 5.99; // default fallback
+            try {
+              const priceResult = await db.query(
+                `SELECT price FROM amazon_catalog 
+                 WHERE LOWER(item_name) = LOWER($1) 
+                 ORDER BY price ASC LIMIT 1`,
+                [lowItem.item_name]
+              );
+              
+              if (priceResult.rows.length > 0) {
+                estimatedPrice = priceResult.rows[0].price;
+              }
+            } catch (priceError) {
+              logger.warn(`Could not fetch price for ${lowItem.item_name}:`, priceError.message);
+            }
+
+            // Add to cart
+            await db.query(
+              `INSERT INTO cart 
+               (user_id, item_name, quantity, unit, category, estimated_price, notes, source)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+               ON CONFLICT (user_id, item_name) DO NOTHING`,
+              [
+                userId,
+                lowItem.item_name,
+                reorderQuantity,
+                lowItem.unit,
+                lowItem.category,
+                estimatedPrice,
+                `Auto-added: Low stock (${lowItem.days_until_runout?.toFixed(1) || '?'} days until runout)`,
+                'auto_order'
+              ]
+            );
+
+            itemsAddedForUser++;
+            totalItemsAdded++;
+          }
+
+          results.push({
+            user_id: userId,
+            low_stock_items: lowStockItems.length,
+            items_added: itemsAddedForUser,
+          });
+
+          logger.info(`Auto-added ${itemsAddedForUser} items to cart for user: ${userId}`);
+
+        } catch (userError) {
+          logger.error(`Error processing auto-order for user ${userId}:`, userError);
+          results.push({
+            user_id: userId,
+            error: userError.message,
+          });
+        }
+      }
+
+      await this.logJobComplete(jobId, 'completed', {
+        items_created: totalItemsAdded,
+        items_processed: users.length,
+        metadata: { results },
+      });
+
+      logger.info(`Auto-add job complete: ${totalItemsAdded} items added for ${users.length} users`);
+
+      return {
+        items_added: totalItemsAdded,
+        users_processed: users.length,
+        results,
+      };
+
+    } catch (error) {
+      logger.error('Error in auto_add_low_stock_to_cart job:', error);
+      await this.logJobComplete(jobId, 'failed', {
+        error_message: error.message,
+      });
+      throw error;
+    }
+  }
+
+  /**
    * Start all scheduled jobs
    */
   start() {
@@ -226,6 +375,15 @@ class AutoOrderScheduler {
       })
     );
 
+    // Job 4: Auto-add low stock items to cart every 15 minutes
+    this.jobs.push(
+      cron.schedule('*/15 * * * *', () => {
+        this.autoAddLowStockToCart().catch((err) => {
+          logger.error('Scheduled autoAddLowStockToCart failed:', err);
+        });
+      })
+    );
+
     // Run all jobs immediately on startup
     logger.info('Running initial auto-order jobs...');
     this.detectZeroInventory().catch((err) =>
@@ -236,6 +394,9 @@ class AutoOrderScheduler {
     );
     this.processDeliveries().catch((err) =>
       logger.error('Initial processDeliveries failed:', err)
+    );
+    this.autoAddLowStockToCart().catch((err) =>
+      logger.error('Initial autoAddLowStockToCart failed:', err)
     );
 
     this.isRunning = true;
@@ -281,6 +442,8 @@ class AutoOrderScheduler {
         return await this.processToOrder();
       case 'process_deliveries':
         return await this.processDeliveries();
+      case 'auto_add_low_stock_to_cart':
+        return await this.autoAddLowStockToCart();
       default:
         throw new Error(`Unknown job: ${jobName}`);
     }

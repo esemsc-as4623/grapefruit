@@ -183,7 +183,7 @@ const HomePage = () => {
             <span className="flex-shrink-0 w-6 h-6 bg-grapefruit-100 text-grapefruit-600 rounded-full flex items-center justify-center text-sm font-medium">
               4
             </span>
-            <span>Review and approve orders before they're placed</span>
+            <span>Track your orders and mark them as arrived when delivered</span>
           </li>
         </ol>
       </div>

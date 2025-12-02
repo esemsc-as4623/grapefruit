@@ -561,7 +561,7 @@ class Orders {
         `UPDATE orders 
          SET status = 'delivered',
              delivered_at = CURRENT_TIMESTAMP
-         WHERE id = $1 AND status = 'placed'
+         WHERE id = $1 AND status IN ('pending', 'approved', 'placed')
          RETURNING *`,
         [id]
       );

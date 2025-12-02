@@ -188,28 +188,15 @@ const CartReview = () => {
     }
   };
 
-  // Approve order
-  const handleApproveOrder = async (orderId) => {
+  // Mark order as arrived (delivered)
+  const handleMarkArrived = async (orderId) => {
     try {
-      await ordersAPI.approve(orderId);
-      await loadPendingOrders();
-      setSuccessMessage('Order approved successfully!');
+      await ordersAPI.markDelivered(orderId);
+      await Promise.all([loadPendingOrders(), loadCart()]);
+      setSuccessMessage('Order marked as arrived! Items added to inventory.');
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
-      setError(err.response?.data?.error?.message || 'Failed to approve order');
-    }
-  };
-
-  // Reject order
-  const handleRejectOrder = async (orderId) => {
-    if (!window.confirm('Are you sure you want to reject this order?')) return;
-    try {
-      await ordersAPI.reject(orderId);
-      await loadPendingOrders();
-      setSuccessMessage('Order rejected.');
-      setTimeout(() => setSuccessMessage(null), 3000);
-    } catch (err) {
-      setError(err.response?.data?.error?.message || 'Failed to reject order');
+      setError(err.response?.data?.error?.message || 'Failed to mark order as arrived');
     }
   };
 
@@ -321,12 +308,12 @@ const CartReview = () => {
           </button>
         </form>
       </div>
-      {/* Pending Orders Section */}
+      {/* Track Orders Section */}
       {pendingOrders.length > 0 && (
         <div className="space-y-4">
           <h3 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
             <Clock className="w-5 h-5 text-orange-500" />
-            Pending Orders ({pendingOrders.length})
+            Track Orders ({pendingOrders.length})
           </h3>
           <div className="space-y-4">
             {pendingOrders.map((order) => (
@@ -348,7 +335,7 @@ const CartReview = () => {
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="px-3 py-1 bg-orange-100 text-orange-700 rounded-full text-xs font-medium uppercase tracking-wide">
-                      Needs Approval
+                      In Transit
                     </span>
                     {expandedOrder === order.id ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
                   </div>
@@ -371,17 +358,11 @@ const CartReview = () => {
                     </div>
                     <div className="flex justify-end gap-3">
                       <button
-                        onClick={(e) => { e.stopPropagation(); handleRejectOrder(order.id); }}
-                        className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg text-sm font-medium transition-colors"
-                      >
-                        Reject
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleApproveOrder(order.id); }}
+                        onClick={(e) => { e.stopPropagation(); handleMarkArrived(order.id); }}
                         className="px-4 py-2 bg-green-600 text-white hover:bg-green-700 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
                       >
                         <Check className="w-4 h-4" />
-                        Approve Order
+                        Arrived
                       </button>
                     </div>
                   </div>

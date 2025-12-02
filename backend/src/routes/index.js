@@ -651,6 +651,94 @@ router.put('/orders/:id/placed', validateUUID('id'), async (req, res, next) => {
   }
 });
 
+/**
+ * PUT /orders/:id/delivered
+ * Mark order as delivered and add items to inventory
+ */
+router.put('/orders/:id/delivered', validateUUID('id'), async (req, res, next) => {
+  try {
+    const orderId = req.params.id;
+    
+    // Get the order first to access its items
+    const order = await Orders.findById(orderId);
+    
+    if (!order) {
+      return res.status(404).json({ error: { message: 'Order not found' } });
+    }
+    
+    if (order.status === 'delivered') {
+      return res.status(400).json({ error: { message: 'Order already marked as delivered' } });
+    }
+    
+    // Mark order as delivered
+    const updatedOrder = await Orders.markDelivered(orderId);
+    
+    if (!updatedOrder) {
+      return res.status(400).json({ error: { message: 'Failed to mark order as delivered. Order must be in pending status.' } });
+    }
+    
+    // Add each item to inventory
+    const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+    const inventoryUpdates = [];
+    
+    for (const item of items) {
+      try {
+        // Try to find existing inventory item by name and unit
+        let inventoryItem = await Inventory.findByNameAndUnit(
+          order.user_id, 
+          item.item_name, 
+          item.unit
+        );
+        
+        if (inventoryItem) {
+          // Item exists - add quantity
+          const updated = await Inventory.addQuantity(
+            inventoryItem.id, 
+            item.quantity,
+            inventoryItem.average_daily_consumption
+          );
+          inventoryUpdates.push({
+            action: 'updated',
+            item: updated,
+          });
+          logger.info(`Added ${item.quantity} ${item.unit} to existing inventory item: ${item.item_name}`);
+        } else {
+          // Item doesn't exist - create new
+          const newItem = await Inventory.create({
+            user_id: order.user_id,
+            item_name: item.item_name,
+            quantity: item.quantity,
+            unit: item.unit,
+            category: item.category || 'others',
+          });
+          inventoryUpdates.push({
+            action: 'created',
+            item: newItem,
+          });
+          logger.info(`Created new inventory item: ${item.item_name} (${item.quantity} ${item.unit})`);
+        }
+      } catch (itemError) {
+        logger.error(`Error adding item ${item.item_name} to inventory:`, itemError);
+        inventoryUpdates.push({
+          action: 'failed',
+          item_name: item.item_name,
+          error: itemError.message,
+        });
+      }
+    }
+    
+    logger.info(`Order delivered: ${updatedOrder.id}, ${inventoryUpdates.length} items processed`);
+    
+    res.json({
+      order: updatedOrder,
+      inventoryUpdates,
+      message: `Order marked as delivered. ${inventoryUpdates.filter(u => u.action !== 'failed').length} items added to inventory.`,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // ============================================
 // CART ROUTES
 // ============================================
@@ -902,6 +990,110 @@ router.delete('/cart', async (req, res, next) => {
     
     logger.info(`Cart cleared for user: ${userId}`);
     res.json({ message: 'Cart cleared', count: items.length });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /cart/auto-add-low-stock
+ * Automatically add all low-stock items to cart (when auto-order is enabled)
+ * This checks user preferences and only adds items if auto_order_enabled is true
+ */
+router.post('/cart/auto-add-low-stock', async (req, res, next) => {
+  try {
+    const userId = req.query.user_id || req.body.user_id || 'demo_user';
+    
+    // Check if auto-order is enabled for this user
+    const preferences = await Preferences.findByUser(userId);
+    
+    if (!preferences || !preferences.auto_order_enabled) {
+      return res.status(400).json({ 
+        error: { 
+          message: 'Auto-order is not enabled for this user. Please enable it in preferences first.',
+          auto_order_enabled: preferences?.auto_order_enabled || false
+        } 
+      });
+    }
+
+    // Get all low-stock items
+    const lowStockItems = await Inventory.findLowInventory(userId);
+    
+    if (lowStockItems.length === 0) {
+      return res.json({
+        message: 'No low-stock items found',
+        itemsAdded: 0,
+        items: [],
+      });
+    }
+
+    // Get current cart items to avoid duplicates
+    const existingCartItems = await Cart.findByUser(userId);
+    const existingItemNames = new Set(existingCartItems.map(item => item.item_name.toLowerCase()));
+
+    const addedItems = [];
+    const skippedItems = [];
+    let errors = [];
+
+    // Add each low-stock item to cart if not already there
+    for (const lowItem of lowStockItems) {
+      // Skip if already in cart
+      if (existingItemNames.has(lowItem.item_name.toLowerCase())) {
+        logger.info(`[Auto-Order] Skipping ${lowItem.item_name} - already in cart`);
+        skippedItems.push({
+          item_name: lowItem.item_name,
+          reason: 'already_in_cart'
+        });
+        continue;
+      }
+
+      try {
+        // Determine reorder quantity (use last purchase quantity or default to 1)
+        const reorderQuantity = lowItem.last_purchase_quantity || 1;
+        
+        // Get price from catalog
+        const priceData = await priceService.getPriceForItem(lowItem.item_name);
+        
+        // Add to cart
+        const cartItem = await Cart.addItem({
+          user_id: userId,
+          item_name: lowItem.item_name,
+          quantity: reorderQuantity,
+          unit: lowItem.unit,
+          category: lowItem.category,
+          estimated_price: priceData.price,
+          notes: `Auto-added: Low stock (${lowItem.days_until_runout?.toFixed(1)} days until runout)`,
+          source: 'auto_order',
+        });
+
+        logger.info(`[Auto-Order] Added ${lowItem.item_name} to cart (${reorderQuantity} ${lowItem.unit})`);
+        
+        addedItems.push({
+          id: cartItem.id,
+          item_name: cartItem.item_name,
+          quantity: cartItem.quantity,
+          unit: cartItem.unit,
+          estimated_price: cartItem.estimated_price,
+          days_until_runout: lowItem.days_until_runout,
+        });
+      } catch (error) {
+        logger.error(`[Auto-Order] Failed to add ${lowItem.item_name} to cart:`, error);
+        errors.push({
+          item_name: lowItem.item_name,
+          error: error.message,
+        });
+      }
+    }
+
+    res.json({
+      message: `Auto-order complete: ${addedItems.length} items added to cart`,
+      itemsAdded: addedItems.length,
+      itemsSkipped: skippedItems.length,
+      totalLowStock: lowStockItems.length,
+      items: addedItems,
+      skipped: skippedItems,
+      errors: errors.length > 0 ? errors : undefined,
+    });
   } catch (error) {
     next(error);
   }

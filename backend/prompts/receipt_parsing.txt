@@ -89,7 +89,7 @@ OUTPUT FORMAT (JSON object with items array):
 
 Be conservative with confidence scores:
 - 0.95-1.0: Very clear, standard format, can decipher quantity, unit, department
-- 0.7-0.5: Readable but some ambiguity (e.g. unsure of unit or department)
+- 0.7-0.95: Readable but some ambiguity (e.g. unsure of unit or department)
 - 0.5-0.7: Poor quality OCR or unusual format (e.g. unsure of quantity, unit, department)
 - Below 0.5: Highly uncertain, needs human review
 
