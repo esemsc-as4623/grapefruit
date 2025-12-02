@@ -4,6 +4,7 @@ const { Inventory, Orders, Preferences, Cart } = require('../models/db');
 const db = require('../config/database');
 const logger = require('../utils/logger');
 const consumptionLearner = require('../services/consumptionLearner');
+const { suggestPriceAndQuantity } = require('../services/cartPricer');
 
 const router = express.Router();
 
@@ -183,18 +184,35 @@ router.post('/day', async (req, res, next) => {
       
       // If quantity reaches 0 or goes below 0, delete and optionally add to cart
       if (newQuantity <= 0) {
-        if (Math.random() < 0.1) {
-          // 10% chance: Add to cart before deleting
-          await Cart.addItem({
-            user_id: userId,
-            item_name: item.item_name,
-            quantity: 1,
-            unit: item.unit,
-            category: item.category,
-            source: 'simulation',
-          });
-          cartAddedItems.push(item.item_name);
-          logger.info(`Added ${item.item_name} to cart (depleted to 0)`);
+        if (Math.random() < 0.3) {
+          // 30% chance: Add to cart before deleting with LLM-suggested quantity
+          try {
+            const llmSuggestion = await suggestPriceAndQuantity(item.item_name, item.category);
+            await Cart.addItem({
+              user_id: userId,
+              item_name: item.item_name,
+              quantity: llmSuggestion.suggested_quantity,
+              unit: llmSuggestion.unit,
+              category: item.category,
+              estimated_price: llmSuggestion.estimated_price_per_unit,
+              source: 'simulation',
+            });
+            cartAddedItems.push(item.item_name);
+            logger.info(`Added ${item.item_name} to cart (depleted to 0) - LLM suggested ${llmSuggestion.suggested_quantity} ${llmSuggestion.unit} @ $${llmSuggestion.estimated_price_per_unit}`);
+          } catch (error) {
+            logger.error(`Failed to get LLM suggestion for ${item.item_name}, using fallback`, error);
+            // Fallback to simple addition
+            await Cart.addItem({
+              user_id: userId,
+              item_name: item.item_name,
+              quantity: 1,
+              unit: item.unit,
+              category: item.category,
+              source: 'simulation',
+            });
+            cartAddedItems.push(item.item_name);
+            logger.info(`Added ${item.item_name} to cart (depleted to 0) - fallback quantity`);
+          }
         }
         
         await Inventory.delete(item.id);
@@ -345,16 +363,34 @@ router.post('/day', async (req, res, next) => {
         );
         
         if (!alreadyInCart && !cartAddedItems.includes(item.item_name)) {
-          await Cart.addItem({
-            user_id: userId,
-            item_name: item.item_name,
-            quantity: 1,
-            unit: item.unit,
-            category: item.category,
-            source: 'simulation',
-          });
-          cartAddedItems.push(item.item_name);
-          logger.info(`Added ${item.item_name} to cart (depletion score: ${depletionScore.toFixed(2)})`);
+          try {
+            // Use LLM to suggest appropriate quantity and pricing
+            const llmSuggestion = await suggestPriceAndQuantity(item.item_name, item.category);
+            await Cart.addItem({
+              user_id: userId,
+              item_name: item.item_name,
+              quantity: llmSuggestion.suggested_quantity,
+              unit: llmSuggestion.unit,
+              category: item.category,
+              estimated_price: llmSuggestion.estimated_price_per_unit,
+              source: 'simulation',
+            });
+            cartAddedItems.push(item.item_name);
+            logger.info(`Added ${item.item_name} to cart (depletion score: ${depletionScore.toFixed(2)}) - LLM suggested ${llmSuggestion.suggested_quantity} ${llmSuggestion.unit} @ $${llmSuggestion.estimated_price_per_unit}`);
+          } catch (error) {
+            logger.error(`Failed to get LLM suggestion for ${item.item_name}, using fallback`, error);
+            // Fallback to simple addition
+            await Cart.addItem({
+              user_id: userId,
+              item_name: item.item_name,
+              quantity: 1,
+              unit: item.unit,
+              category: item.category,
+              source: 'simulation',
+            });
+            cartAddedItems.push(item.item_name);
+            logger.info(`Added ${item.item_name} to cart (depletion score: ${depletionScore.toFixed(2)}) - fallback quantity`);
+          }
         }
       }
     }
