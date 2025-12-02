@@ -40,9 +40,6 @@ const inventorySchema = Joi.object({
 });
 
 const preferencesSchema = Joi.object({
-  max_spend: Joi.number().min(0).optional(),
-  approval_mode: Joi.string().valid('manual', 'auto_under_limit', 'auto_all').optional(),
-  auto_approve_limit: Joi.number().min(0).optional(),
   brand_prefs: Joi.object().optional(),
   allowed_vendors: Joi.array().items(Joi.string()).optional(),
   notify_low_inventory: Joi.boolean().optional(),
@@ -571,18 +568,6 @@ router.post('/orders', async (req, res, next) => {
     const shipping = subtotal >= 35 ? 0 : 5.99;
     const total = subtotal + tax + shipping;
 
-    // Check spending cap
-    const prefs = await Preferences.findByUser(userId);
-    if (prefs && total > prefs.max_spend) {
-      return res.status(400).json({
-        error: {
-          message: 'Order exceeds spending limit',
-          limit: prefs.max_spend,
-          total: total,
-        },
-      });
-    }
-
     // Create order with validated prices
     const order = await Orders.create({
       ...value,
@@ -593,13 +578,6 @@ router.post('/orders', async (req, res, next) => {
       shipping,
       total,
     });
-
-    // Auto-approve if conditions met
-    if (prefs && prefs.approval_mode === 'auto_all') {
-      await Orders.approve(order.id, 'Auto-approved (all orders)');
-    } else if (prefs && prefs.approval_mode === 'auto_under_limit' && total <= prefs.auto_approve_limit) {
-      await Orders.approve(order.id, `Auto-approved (under $${prefs.auto_approve_limit})`);
-    }
 
     logger.info(`Order created with validated Amazon prices: ${order.id} - $${total.toFixed(2)}`);
     res.status(201).json(order);
@@ -727,11 +705,12 @@ router.get('/cart/:id', validateUUID('id'), async (req, res, next) => {
  * Add item to cart with intelligent pricing
  * 
  * ARCHITECTURE:
- * 1. LLM (cartPricer) suggests: quantity, unit, category
- * 2. Catalog (priceService) provides: authoritative price
- * 3. Combine both for complete cart item
+ * 1. LLM (cartPricer) suggests: quantity, unit, category, and price estimate
+ * 2. Catalog (priceService) provides: authoritative price (if available)
+ * 3. Use catalog price for good matches (confidence >= 0.7)
+ * 4. Use LLM price for items not in catalog (confidence < 0.7)
  * 
- * This ensures AI-powered convenience with accurate pricing.
+ * This ensures accurate pricing for known items, while using AI estimates for new/specialty items.
  */
 router.post('/cart', async (req, res, next) => {
   try {
@@ -744,29 +723,31 @@ router.post('/cart', async (req, res, next) => {
     const useLLMPricing = value.use_llm_pricing !== false; // Default to true
     
     let itemData = { ...value, user_id: userId };
+    let llmSuggestion = null;
     
-    // STEP 1: Get LLM suggestions for quantity, unit, category (if needed)
+    // STEP 1: Get LLM suggestions for quantity, unit, category, and price
     if (useLLMPricing && (!value.quantity || !value.unit || !value.category)) {
       try {
-        logger.info(`[LLM] Getting quantity/unit/category suggestion for: ${value.item_name}`);
-        const suggestion = await suggestPriceAndQuantity(value.item_name, value.category);
+        logger.info(`[LLM] Getting suggestion for: ${value.item_name}`);
+        llmSuggestion = await suggestPriceAndQuantity(value.item_name, value.category);
         
         // Use LLM suggestions for missing fields
         if (!value.quantity) {
-          itemData.quantity = suggestion.suggested_quantity;
+          itemData.quantity = llmSuggestion.suggested_quantity;
         }
         if (!value.unit) {
-          itemData.unit = suggestion.unit;
+          itemData.unit = llmSuggestion.unit;
         }
-        if (!value.category && suggestion.category) {
-          itemData.category = suggestion.category;
+        if (!value.category && llmSuggestion.category) {
+          itemData.category = llmSuggestion.category;
         }
         
         logger.info(`[LLM] Applied suggestions for ${value.item_name}:`, {
           quantity: itemData.quantity,
           unit: itemData.unit,
           category: itemData.category,
-          confidence: suggestion.confidence,
+          estimatedPrice: llmSuggestion.estimated_price_per_unit,
+          confidence: llmSuggestion.confidence,
         });
       } catch (llmError) {
         // If LLM fails, require user to provide values
@@ -783,10 +764,10 @@ router.post('/cart', async (req, res, next) => {
       }
     }
     
-    // STEP 2: Fetch authoritative price from amazon_catalog
+    // STEP 2: Fetch price from amazon_catalog
     const priceData = await priceService.getPriceForItem(value.item_name);
     
-    logger.info(`[Catalog] Price for ${value.item_name}:`, {
+    logger.info(`[Catalog] Lookup for ${value.item_name}:`, {
       price: priceData.price,
       brand: priceData.brand,
       source: priceData.source,
@@ -794,24 +775,51 @@ router.post('/cart', async (req, res, next) => {
       confidence: priceData.confidence,
     });
 
-    // STEP 3: Create cart item with catalog price (override any LLM estimate)
+    // STEP 3: Decide which price to use based on catalog confidence
+    // Confidence >= 0.7: Good catalog match, use catalog price
+    // Confidence < 0.7: Poor/no match, use LLM estimate if available
+    let finalPrice = priceData.price;
+    let finalBrand = priceData.brand;
+    let priceSource = priceData.source;
+    
+    if (priceData.confidence < 0.7 && llmSuggestion && llmSuggestion.estimated_price_per_unit) {
+      finalPrice = llmSuggestion.estimated_price_per_unit;
+      finalBrand = 'AI Estimated';
+      priceSource = 'llm_estimate';
+      
+      logger.info(`[Pricing] Using LLM estimate for ${value.item_name}:`, {
+        catalogConfidence: priceData.confidence,
+        catalogPrice: priceData.price,
+        llmPrice: finalPrice,
+        reason: 'No close catalog match found'
+      });
+    } else {
+      logger.info(`[Pricing] Using catalog price for ${value.item_name}:`, {
+        catalogConfidence: priceData.confidence,
+        catalogPrice: finalPrice,
+        llmPrice: llmSuggestion?.estimated_price_per_unit || 'N/A',
+        reason: priceData.confidence >= 0.7 ? 'Good catalog match' : 'No LLM estimate available'
+      });
+    }
+
+    // STEP 4: Create cart item with final price
     const item = await Cart.addItem({
       ...itemData,
-      estimated_price: priceData.price, // Use catalog price, not LLM estimate
+      estimated_price: finalPrice,
     });
 
-    // STEP 4: Enrich response with price metadata
+    // STEP 5: Enrich response with price metadata
     const enrichedItem = {
       ...item,
-      price: priceData.price,
-      brand: priceData.brand,
+      price: finalPrice,
+      brand: finalBrand,
       catalog_name: priceData.catalogName,
-      priceSource: priceData.source,
+      priceSource: priceSource,
       matchType: priceData.matchType,
       confidence: priceData.confidence,
     };
 
-    logger.info(`[Cart] Item added: ${item.id} - ${item.item_name} (${itemData.quantity} ${itemData.unit} @ $${priceData.price})`);
+    logger.info(`[Cart] Item added: ${item.id} - ${item.item_name} (${itemData.quantity} ${itemData.unit} @ $${finalPrice})`);
     res.status(201).json(enrichedItem);
   } catch (error) {
     next(error);

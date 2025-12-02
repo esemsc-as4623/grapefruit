@@ -142,7 +142,7 @@ const HomePage = () => {
           </div>
           <h3 className="font-semibold text-gray-900 mb-2">Full Control</h3>
           <p className="text-sm text-gray-600">
-            Set spending limits and brand preferences
+            Set vendor and brand preferences
           </p>
         </div>
 
@@ -171,7 +171,7 @@ const HomePage = () => {
             <span className="flex-shrink-0 w-6 h-6 bg-grapefruit-100 text-grapefruit-600 rounded-full flex items-center justify-center text-sm font-medium">
               2
             </span>
-            <span>Set your spending limits and brand preferences</span>
+            <span>Set your vendor and brand preferences</span>
           </li>
           <li className="flex items-start gap-3">
             <span className="flex-shrink-0 w-6 h-6 bg-grapefruit-100 text-grapefruit-600 rounded-full flex items-center justify-center text-sm font-medium">

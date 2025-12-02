@@ -215,8 +215,8 @@ const InventoryDashboard = () => {
 
   // Get step size based on unit
   const getStepSize = (unit) => {
-    const wholeNumberUnits = ['count', 'can'];
-    const quarterUnits = ['package', 'box', 'bottle'];
+    const wholeNumberUnits = ['count', 'can', 'each', 'box', 'package'];
+    const quarterUnits = ['bottle'];
     const halfUnits = ['gallon', 'liter', 'quart'];
     const fineUnits = ['ounce', 'pound', 'lb', 'oz'];
 

@@ -215,13 +215,11 @@ const CartReview = () => {
 
   // Get step size based on unit
   const getStepSize = (unit) => {
-    const wholeNumberUnits = ['count', 'can'];
-    const quarterUnits = ['package', 'box', 'bottle'];
+    const wholeNumberUnits = ['count', 'can', 'each', 'box', 'package', 'bottle'];
     const halfUnits = ['gallon', 'liter', 'quart'];
     const fineUnits = ['ounce', 'pound', 'lb', 'oz'];
 
     if (wholeNumberUnits.includes(unit?.toLowerCase())) return 1;
-    if (quarterUnits.includes(unit?.toLowerCase())) return 0.25;
     if (halfUnits.includes(unit?.toLowerCase())) return 0.5;
     if (fineUnits.includes(unit?.toLowerCase())) return 0.1;
     return 0.5; // default

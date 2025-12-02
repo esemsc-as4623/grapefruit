@@ -318,35 +318,32 @@ class Preferences {
    */
   static async upsert(userId, prefsData) {
     const {
-      max_spend,
-      approval_mode,
-      auto_approve_limit,
       brand_prefs,
       allowed_vendors,
       notify_low_inventory,
       notify_order_ready,
+      auto_order_enabled,
+      auto_order_threshold_days,
     } = prefsData;
 
     try {
       const result = await db.query(
         `INSERT INTO preferences 
-         (user_id, max_spend, approval_mode, auto_approve_limit, brand_prefs, allowed_vendors, 
-          notify_low_inventory, notify_order_ready)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         (user_id, brand_prefs, allowed_vendors, 
+          notify_low_inventory, notify_order_ready, auto_order_enabled, auto_order_threshold_days)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT (user_id) 
          DO UPDATE SET
-           max_spend = EXCLUDED.max_spend,
-           approval_mode = EXCLUDED.approval_mode,
-           auto_approve_limit = EXCLUDED.auto_approve_limit,
            brand_prefs = EXCLUDED.brand_prefs,
            allowed_vendors = EXCLUDED.allowed_vendors,
            notify_low_inventory = EXCLUDED.notify_low_inventory,
            notify_order_ready = EXCLUDED.notify_order_ready,
+           auto_order_enabled = EXCLUDED.auto_order_enabled,
+           auto_order_threshold_days = EXCLUDED.auto_order_threshold_days,
            updated_at = CURRENT_TIMESTAMP
          RETURNING *`,
-        [userId, max_spend, approval_mode, auto_approve_limit, 
-         JSON.stringify(brand_prefs), JSON.stringify(allowed_vendors),
-         notify_low_inventory, notify_order_ready]
+        [userId, JSON.stringify(brand_prefs), JSON.stringify(allowed_vendors),
+         notify_low_inventory, notify_order_ready, auto_order_enabled, auto_order_threshold_days]
       );
       return result.rows[0];
     } catch (error) {

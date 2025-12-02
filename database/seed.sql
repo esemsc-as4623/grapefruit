@@ -16,8 +16,8 @@ END $$;
 -- ============================================
 -- SEED USER PREFERENCES
 -- ============================================
-INSERT INTO preferences (user_id, max_spend, approval_mode, auto_approve_limit, brand_prefs, allowed_vendors) VALUES
-('demo_user', 250.00, 'auto_under_limit', 20.00, 
+INSERT INTO preferences (user_id, brand_prefs, allowed_vendors) VALUES
+('demo_user', 
 '{
   "dairy": {
     "preferred": ["Organic Valley", "Horizon"],
@@ -45,7 +45,7 @@ INSERT INTO preferences (user_id, max_spend, approval_mode, auto_approve_limit, 
     "avoid": []
   }
 }'::jsonb,
-'["walmart", "amazon"]'::jsonb);
+'["amazon"]'::jsonb);
 
 -- ============================================
 -- SEED INVENTORY DATA

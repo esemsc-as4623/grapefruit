@@ -9,7 +9,6 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- Create enum types for better data integrity
 CREATE TYPE order_status AS ENUM ('pending', 'approved', 'rejected', 'placed', 'delivered', 'cancelled');
 CREATE TYPE vendor_type AS ENUM ('amazon', 'walmart', 'other');
-CREATE TYPE approval_mode AS ENUM ('manual', 'auto_under_limit', 'auto_all');
 
 -- ============================================
 -- INVENTORY TABLE
@@ -45,23 +44,18 @@ CREATE INDEX idx_inventory_runout ON inventory(predicted_runout) WHERE predicted
 -- ============================================
 -- PREFERENCES TABLE
 -- ============================================
--- Stores user preferences for spending limits, brand preferences, and vendors
+-- Stores user preferences for brand preferences, and vendors
 CREATE TABLE preferences (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id VARCHAR(255) NOT NULL UNIQUE DEFAULT 'demo_user',
-    
-    -- Spending controls
-    max_spend DECIMAL(10, 2) DEFAULT 200.00 CHECK (max_spend >= 0),
-    approval_mode approval_mode DEFAULT 'manual',
-    auto_approve_limit DECIMAL(10, 2), -- Auto-approve if order < this amount
     
     -- Brand preferences (JSON format)
     -- Example: {"milk": {"preferred": ["Organic Valley"], "acceptable": ["Great Value"], "avoid": ["Generic"]}}
     brand_prefs JSONB DEFAULT '{}'::jsonb,
     
     -- Vendor allowlist (JSON array)
-    -- Example: ["walmart", "amazon"]
-    allowed_vendors JSONB DEFAULT '["walmart", "amazon"]'::jsonb,
+    -- Example: ["amazon"]
+    allowed_vendors JSONB DEFAULT '["amazon"]'::jsonb,
     
     -- Notification preferences
     notify_low_inventory BOOLEAN DEFAULT true,

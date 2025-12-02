@@ -90,77 +90,21 @@ CREATE INDEX idx_background_jobs_name ON background_jobs(job_name);
 CREATE INDEX idx_background_jobs_started_at ON background_jobs(started_at DESC);
 
 -- ============================================
--- SEED: Amazon Catalog Data
+-- ALTER preferences table for auto-ordering
 -- ============================================
-INSERT INTO amazon_catalog (item_name, category, price, unit, brand, in_stock) VALUES
--- Dairy
-('Milk', 'dairy', 5.99, 'gallon', 'Great Value', true),  -- Generic milk entry
-('Whole Milk', 'dairy', 4.99, 'gallon', 'Organic Valley', true),
-('2% Milk', 'dairy', 4.49, 'gallon', 'Horizon', true),
-('Skim Milk', 'dairy', 4.29, 'gallon', 'Great Value', true),
-('Half and Half', 'dairy', 3.99, 'quart', 'Organic Valley', true),
-('Heavy Cream', 'dairy', 5.49, 'pint', 'Horizon', true),
-('Cream', 'dairy', 5.49, 'pint', 'Horizon', true),  -- Generic cream entry
-('Yogurt', 'dairy', 5.99, 'count', 'Chobani', true),
-('Butter', 'dairy', 6.99, 'lb', 'Kerrygold', true),
-('Cream Cheese', 'dairy', 3.49, 'count', 'Philadelphia', true),
-('Cheddar Cheese', 'dairy', 7.99, 'lb', 'Tillamook', true),
-('Cheese', 'dairy', 6.99, 'lb', 'Tillamook', true),  -- Generic cheese entry
-('Eggs', 'dairy', 5.99, 'dozen', 'Organic Valley', true),
+ALTER TABLE preferences
+ADD COLUMN IF NOT EXISTS auto_order_enabled BOOLEAN DEFAULT false,
+ADD COLUMN IF NOT EXISTS auto_order_threshold_days INTEGER DEFAULT 3 CHECK (auto_order_threshold_days >= 0);
 
--- Produce
-('Bananas', 'produce', 0.59, 'lb', 'Fresh', true),
-('Apples', 'produce', 1.99, 'lb', 'Organic', true),
-('Oranges', 'produce', 1.49, 'lb', 'Fresh', true),
-('Strawberries', 'produce', 4.99, 'lb', 'Organic', true),
-('Blueberries', 'produce', 5.99, 'lb', 'Organic', true),
-('Avocados', 'produce', 1.99, 'count', 'Fresh', true),
-('Tomatoes', 'produce', 2.49, 'lb', 'Organic', true),
-('Lettuce', 'produce', 2.99, 'count', 'Fresh', true),
-('Spinach', 'produce', 3.99, 'lb', 'Organic', true),
-('Carrots', 'produce', 1.99, 'lb', 'Fresh', true),
-('Broccoli', 'produce', 2.49, 'lb', 'Fresh', true),
-('Potatoes', 'produce', 3.99, 'bag', 'Russet', true),
-('Onions', 'produce', 1.99, 'lb', 'Yellow', true),
-('Garlic', 'produce', 0.99, 'count', 'Fresh', true),
+CREATE INDEX IF NOT EXISTS idx_preferences_auto_order ON preferences(user_id, auto_order_enabled);
 
--- Beverages
-('Ground Coffee', 'beverages', 12.99, 'lb', 'Starbucks', true),
-('Coffee Beans', 'beverages', 14.99, 'lb', 'Peet''s', true),
-('Orange Juice', 'beverages', 5.99, 'half-gallon', 'Tropicana', true),
-('Apple Juice', 'beverages', 4.99, 'half-gallon', 'Mott''s', true),
-('Sparkling Water', 'beverages', 6.99, 'case', 'La Croix', true),
-('Green Tea', 'beverages', 5.99, 'count', 'Lipton', true),
-('Soda', 'beverages', 7.99, 'case', 'Coca-Cola', true),
+COMMENT ON COLUMN preferences.auto_order_enabled IS 'Enable automatic ordering when inventory runs low';
+COMMENT ON COLUMN preferences.auto_order_threshold_days IS 'Number of days before runout to trigger auto-order (default: 3)';
 
--- Pantry
-('Bread', 'pantry', 5.99, 'loaf', 'Dave''s Killer Bread', true),
-('Pasta', 'pantry', 2.99, 'lb', 'Barilla', true),
-('Rice', 'pantry', 8.99, 'bag', 'Jasmine', true),
-('Flour', 'pantry', 6.99, 'bag', 'King Arthur', true),
-('Sugar', 'pantry', 3.99, 'bag', 'Domino', true),
-('Olive Oil', 'pantry', 12.99, 'bottle', 'California Olive Ranch', true),
-('Peanut Butter', 'pantry', 6.99, 'jar', 'Skippy', true),
-('Honey', 'pantry', 8.99, 'jar', 'Local', true),
-('Maple Syrup', 'pantry', 11.99, 'bottle', 'Pure', true),
-('Oatmeal', 'pantry', 5.99, 'container', 'Quaker', true),
-('Cereal', 'pantry', 5.99, 'box', 'General Mills', true),
-('Chocolate', 'pantry', 3.99, 'bar', 'Hershey''s', true),
-('Chocolate Chips', 'pantry', 4.49, 'bag', 'Nestle', true),
-
--- Frozen
-('Frozen Pizza', 'frozen', 7.99, 'count', 'DiGiorno', true),
-('Ice Cream', 'frozen', 6.99, 'pint', 'Ben & Jerry''s', true),
-('Frozen Vegetables', 'frozen', 3.99, 'bag', 'Green Giant', true),
-('Frozen Berries', 'frozen', 5.99, 'bag', 'Organic', true),
-
--- Household
-('Paper Towels', 'household', 19.99, 'pack', 'Bounty', true),
-('Toilet Paper', 'household', 24.99, 'pack', 'Charmin', true),
-('Dish Soap', 'household', 4.99, 'bottle', 'Dawn', true),
-('Laundry Detergent', 'household', 14.99, 'bottle', 'Tide', true),
-('Trash Bags', 'household', 12.99, 'box', 'Glad', true)
-ON CONFLICT (item_name) DO NOTHING;
+-- ============================================
+-- NOTE: Amazon catalog is populated by seed-grocery-catalog.sql
+-- which runs after this migration (06-seed-grocery-catalog.sql)
+-- ============================================
 
 -- ============================================
 -- FUNCTION: Auto-detect low inventory items based on user preferences
