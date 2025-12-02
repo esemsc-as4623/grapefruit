@@ -3,6 +3,7 @@ const Joi = require('joi');
 const { Inventory, Preferences, Orders, Cart } = require('../models/db');
 const logger = require('../utils/logger');
 const consumptionLearner = require('../services/consumptionLearner');
+const priceService = require('../services/priceService');
 
 const router = express.Router();
 
@@ -513,6 +514,7 @@ router.get('/orders/:id', validateUUID('id'), async (req, res, next) => {
 /**
  * POST /orders
  * Create new order
+ * Now validates and enriches items with real Amazon catalog prices
  */
 router.post('/orders', async (req, res, next) => {
   try {
@@ -520,35 +522,82 @@ router.post('/orders', async (req, res, next) => {
     if (error) {
       return res.status(400).json({ error: { message: error.details[0].message } });
     }
-    
+
     const userId = req.body.user_id || 'demo_user';
-    
+
+    // Enrich order items with prices from catalog (safety check)
+    // This ensures consistent pricing even if frontend passes stale/wrong prices
+    const enrichedItems = await Promise.all(
+      value.items.map(async (item) => {
+        // If item already has a price, validate it against catalog
+        if (item.price) {
+          const priceData = await priceService.getPriceForItem(item.item_name);
+
+          // Allow small price differences (catalog may have updated)
+          const priceDiff = Math.abs(item.price - priceData.price);
+          if (priceDiff > 0.50) {
+            logger.warn('Order item price mismatch', {
+              itemName: item.item_name,
+              sentPrice: item.price,
+              catalogPrice: priceData.price,
+              diff: priceDiff,
+            });
+          }
+
+          return {
+            ...item,
+            price: priceData.price, // Use catalog price (authoritative)
+            brand: priceData.brand,
+          };
+        } else {
+          // Fetch price from catalog
+          const priceData = await priceService.getPriceForItem(item.item_name);
+          return {
+            ...item,
+            price: priceData.price,
+            brand: priceData.brand,
+          };
+        }
+      })
+    );
+
+    // Recalculate totals with validated prices
+    const subtotal = enrichedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const tax = subtotal * 0.08;
+    const shipping = subtotal >= 35 ? 0 : 5.99;
+    const total = subtotal + tax + shipping;
+
     // Check spending cap
     const prefs = await Preferences.findByUser(userId);
-    if (prefs && value.total > prefs.max_spend) {
+    if (prefs && total > prefs.max_spend) {
       return res.status(400).json({
         error: {
           message: 'Order exceeds spending limit',
           limit: prefs.max_spend,
-          total: value.total,
+          total: total,
         },
       });
     }
-    
-    // Create order
+
+    // Create order with validated prices
     const order = await Orders.create({
       ...value,
       user_id: userId,
+      items: enrichedItems,
+      subtotal,
+      tax,
+      shipping,
+      total,
     });
-    
+
     // Auto-approve if conditions met
     if (prefs && prefs.approval_mode === 'auto_all') {
       await Orders.approve(order.id, 'Auto-approved (all orders)');
-    } else if (prefs && prefs.approval_mode === 'auto_under_limit' && value.total <= prefs.auto_approve_limit) {
+    } else if (prefs && prefs.approval_mode === 'auto_under_limit' && total <= prefs.auto_approve_limit) {
       await Orders.approve(order.id, `Auto-approved (under $${prefs.auto_approve_limit})`);
     }
-    
-    logger.info(`Order created: ${order.id}`);
+
+    logger.info(`Order created with validated Amazon prices: ${order.id} - $${total.toFixed(2)}`);
     res.status(201).json(order);
   } catch (error) {
     next(error);
@@ -627,18 +676,24 @@ router.put('/orders/:id/placed', validateUUID('id'), async (req, res, next) => {
 /**
  * GET /cart
  * Get all cart items for user
+ * Now enriched with real-time prices from amazon_catalog
  */
 router.get('/cart', async (req, res, next) => {
   try {
     const userId = req.query.user_id || 'demo_user';
     const items = await Cart.findByUser(userId);
-    const count = await Cart.getCount(userId);
-    const total = await Cart.getTotalPrice(userId);
-    
+
+    // Enrich cart items with current prices from catalog
+    const enrichedItems = await priceService.enrichCartWithPrices(items);
+
+    // Calculate totals with real prices
+    const totals = priceService.calculateCartTotals(enrichedItems);
+
     res.json({
-      items,
-      count,
-      total,
+      items: enrichedItems,
+      count: enrichedItems.length,
+      ...totals,
+      lastUpdated: new Date().toISOString(),
     });
   } catch (error) {
     next(error);
@@ -666,6 +721,7 @@ router.get('/cart/:id', validateUUID('id'), async (req, res, next) => {
 /**
  * POST /cart
  * Add item to cart
+ * Now fetches real-time price from amazon_catalog
  */
 router.post('/cart', async (req, res, next) => {
   try {
@@ -673,16 +729,30 @@ router.post('/cart', async (req, res, next) => {
     if (error) {
       return res.status(400).json({ error: { message: error.details[0].message } });
     }
-    
+
     const userId = req.body.user_id || 'demo_user';
-    
+
+    // Fetch current price from catalog
+    const priceData = await priceService.getPriceForItem(value.item_name);
+
     const item = await Cart.addItem({
       ...value,
       user_id: userId,
+      estimated_price: priceData.price, // Store current price
     });
-    
-    logger.info(`Item added to cart: ${item.id} - ${item.item_name}`);
-    res.status(201).json(item);
+
+    // Enrich response with price metadata
+    const enrichedItem = {
+      ...item,
+      price: priceData.price,
+      brand: priceData.brand,
+      priceSource: priceData.source,
+      matchType: priceData.matchType,
+      confidence: priceData.confidence,
+    };
+
+    logger.info(`Item added to cart: ${item.id} - ${item.item_name} at $${priceData.price}`);
+    res.status(201).json(enrichedItem);
   } catch (error) {
     next(error);
   }
