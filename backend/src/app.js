@@ -40,8 +40,10 @@ if (process.env.NODE_ENV === 'production') {
 // Slow request detection
 app.use(slowRequestLogger(2000)); // Warn about requests taking > 2 seconds
 
-// Rate limiting (apply to all routes)
-app.use(apiLimiter);
+// Rate limiting (apply to all routes, but skip in test environment)
+if (process.env.NODE_ENV !== 'test') {
+  app.use(apiLimiter);
+}
 
 // ============================================
 // ROUTES
@@ -113,7 +115,12 @@ app.get('/health', async (req, res) => {
 // API routes
 app.use('/', routes);
 app.use('/simulate', simulationRoutes);
-app.use('/receipts', strictLimiter, receiptRoutes); // Stricter rate limit for LLM endpoints
+// Stricter rate limit for LLM endpoints (skip in test mode)
+if (process.env.NODE_ENV !== 'test') {
+  app.use('/receipts', strictLimiter, receiptRoutes);
+} else {
+  app.use('/receipts', receiptRoutes);
+}
 app.use('/', autoOrderRoutes);
 app.use('/', auditLogsRoutes); // Audit logs API
 

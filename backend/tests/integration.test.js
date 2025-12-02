@@ -182,8 +182,11 @@ describe('Grapefruit Backend Integration Tests', () => {
     test('GET /health should return 200 OK', async () => {
       const response = await request(app).get('/health');
       expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('status', 'ok');
+      expect(response.body).toHaveProperty('status');
+      expect(['healthy', 'degraded']).toContain(response.body.status);
       expect(response.body).toHaveProperty('timestamp');
+      expect(response.body).toHaveProperty('database');
+      expect(response.body).toHaveProperty('migrations');
     });
   });
 

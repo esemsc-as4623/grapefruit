@@ -177,7 +177,7 @@ describe('Production Readiness Tests', () => {
       const queryCount = 50;
       
       const queries = Array(queryCount).fill().map((_, i) => 
-        pool.query('SELECT $1 as query_num', [i])
+        pool.query('SELECT $1::integer as query_num', [i])
       );
 
       const results = await Promise.all(queries);
@@ -574,10 +574,10 @@ describe('Production Readiness Tests', () => {
     test('should verify llm_cache table can store and retrieve', async () => {
       const testCacheKey = 'test_cache_key_' + Date.now();
       
-      // Insert test cache entry
+      // Insert test cache entry with all required fields
       await pool.query(`
-        INSERT INTO llm_cache (cache_key, model, response, tokens_used, response_time_ms)
-        VALUES ($1, 'test-model', 'test response', 100, 50)
+        INSERT INTO llm_cache (cache_key, model, system_prompt_hash, user_prompt_hash, response, tokens_used, response_time_ms)
+        VALUES ($1, 'test-model', 'sys_hash', 'user_hash', 'test response', 100, 50)
       `, [testCacheKey]);
 
       // Retrieve it
@@ -597,10 +597,10 @@ describe('Production Readiness Tests', () => {
     test('should increment hit_count on cache updates', async () => {
       const testCacheKey = 'hit_count_test_' + Date.now();
       
-      // Insert
+      // Insert with all required fields
       await pool.query(`
-        INSERT INTO llm_cache (cache_key, model, response)
-        VALUES ($1, 'test-model', 'test')
+        INSERT INTO llm_cache (cache_key, model, system_prompt_hash, user_prompt_hash, response)
+        VALUES ($1, 'test-model', 'sys_hash', 'user_hash', 'test')
       `, [testCacheKey]);
 
       // Simulate cache hit
