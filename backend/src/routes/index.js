@@ -744,9 +744,9 @@ router.post('/cart', async (req, res, next) => {
     let itemData = { ...value, user_id: userId };
     
     // STEP 1: Get LLM suggestions for quantity, unit, category (if needed)
-    if (useLLMPricing && (!value.quantity || !value.unit)) {
+    if (useLLMPricing && (!value.quantity || !value.unit || !value.category)) {
       try {
-        logger.info(`[LLM] Getting quantity/unit suggestion for: ${value.item_name}`);
+        logger.info(`[LLM] Getting quantity/unit/category suggestion for: ${value.item_name}`);
         const suggestion = await suggestPriceAndQuantity(value.item_name, value.category);
         
         // Use LLM suggestions for missing fields

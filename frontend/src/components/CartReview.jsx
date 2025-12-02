@@ -251,7 +251,7 @@ const CartReview = () => {
           <h2 className="text-3xl font-bold text-gray-900">Orders & Cart</h2>
           <p className="text-gray-600 mt-1">
             {cartCount} item{cartCount !== 1 ? 's' : ''} in cart
-            {cartTotals && cartTotals.total > 0 && ` • Est. ${formatCurrency(cartTotals.total)}`}
+            {cartTotals && ` • Est. ${formatCurrency(cartTotals.total || 0)}`}
             {lastUpdated && (
               <span className="text-xs text-gray-500 ml-2">
                 • Prices updated {new Date(lastUpdated).toLocaleTimeString()}
@@ -430,13 +430,20 @@ const CartReview = () => {
                     <div className="flex-1 flex items-center gap-3">
                       <div className="flex-1">
                         <h3 className="font-semibold text-gray-900">{item.item_name}</h3>
-                        <div className="flex items-center gap-3 text-sm text-gray-600 mt-1">
-                          <span className="capitalize">{item.category || 'Other'}</span>
+                        <div className="flex items-center gap-2 text-sm mt-1">
+                          {/* Category - Always show in blue */}
+                          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded capitalize">
+                            {item.category || 'Uncategorized'}
+                          </span>
+                          
+                          {/* Brand - Show in gray if not Generic */}
                           {item.brand && item.brand !== 'Generic' && (
-                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+                            <span className="text-xs text-gray-600">
                               {item.brand}
                             </span>
                           )}
+                          
+                          {/* Price change indicator */}
                           {item.priceChanged && (
                             <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded flex items-center gap-1">
                               ℹ️ Price updated: {formatCurrency(item.cachedPrice)} → {formatCurrency(item.price)}

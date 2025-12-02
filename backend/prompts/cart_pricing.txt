@@ -40,10 +40,24 @@ Given a grocery item, suggest:
 1. A reasonable quantity to purchase (typical household amount)
 2. The appropriate unit of measurement
 3. An estimated price per unit based on current Amazon Fresh and Walmart prices
-4. Confidence in your suggestion (0.0 to 1.0)
+4. The grocery category (DAIRY, PRODUCE, MEAT, PANTRY, BAKERY, FROZEN, BEVERAGES, SNACKS, CONDIMENTS, HOUSEHOLD, PERSONAL_CARE, OTHERS)
+5. Confidence in your suggestion (0.0 to 1.0)
+
+CATEGORY GUIDELINES:
+- ALWAYS assign a category to every item
+- Use UPPERCASE for category values
+- Valid categories: DAIRY, PRODUCE, MEAT, PANTRY, BAKERY, FROZEN, BEVERAGES, SNACKS, CONDIMENTS, HOUSEHOLD, PERSONAL_CARE, OTHERS
+- When uncertain, use the most specific category possible or OTHERS as fallback
 
 PRICING GUIDELINES:
 - Base prices on 2025 US market averages from Walmart and Amazon Fresh
+- PRIORITIZE PRICE DIVERSITY - avoid defaulting to common prices like $5.99
+- Research realistic price ranges for each item type:
+  * Produce: $0.50-$4.00/lb (bananas $0.59, berries $3.99)
+  * Dairy: $2.00-$8.00 (milk $4.29, specialty cheese $7.99)
+  * Meat: $3.99-$12.99/lb (chicken $4.99, ribeye $12.99)
+  * Pantry: $1.00-$6.00 (pasta $1.99, cereal $5.49)
+  * Bakery: $2.00-$6.00 (bread $2.99, croissants $5.99)
 - Consider mid-tier brands (not premium organic, not ultra-budget)
 - Round prices to realistic values (e.g., $3.99, $4.29, not $4.237)
 - If price varies widely by brand/type, use a middle estimate
@@ -77,11 +91,20 @@ Return ONLY a valid JSON object with this exact structure:
 {
   "suggested_quantity": <number>,
   "unit": "<string>",
+  "category": "<string in UPPERCASE>",
   "estimated_price_per_unit": <number>,
   "total_price": <number>,
   "confidence": <number between 0 and 1>,
   "reasoning": "<brief explanation of your suggestion>"
 }
+
+CRITICAL REQUIREMENTS:
+1. ALWAYS include the "category" field (required, not optional)
+2. Category must be UPPERCASE (e.g., "DAIRY", not "dairy")
+3. Return ONLY valid JSON, no additional text
+4. All numeric values must be numbers, not strings
+5. Prices should reflect 2025 market conditions with REALISTIC DIVERSITY
+6. Avoid defaulting to $5.99 - research actual typical prices for each item
 
 EXAMPLES:
 
@@ -90,6 +113,7 @@ Output:
 {
   "suggested_quantity": 1,
   "unit": "gallon",
+  "category": "DAIRY",
   "estimated_price_per_unit": 4.29,
   "total_price": 4.29,
   "confidence": 0.95,
@@ -101,6 +125,7 @@ Output:
 {
   "suggested_quantity": 3,
   "unit": "pound",
+  "category": "PRODUCE",
   "estimated_price_per_unit": 0.59,
   "total_price": 1.77,
   "confidence": 0.90,
@@ -112,6 +137,7 @@ Output:
 {
   "suggested_quantity": 2,
   "unit": "pound",
+  "category": "MEAT",
   "estimated_price_per_unit": 4.99,
   "total_price": 9.98,
   "confidence": 0.85,
@@ -123,6 +149,7 @@ Output:
 {
   "suggested_quantity": 12,
   "unit": "count",
+  "category": "DAIRY",
   "estimated_price_per_unit": 0.29,
   "total_price": 3.49,
   "confidence": 0.95,
@@ -134,6 +161,7 @@ Output:
 {
   "suggested_quantity": 1,
   "unit": "pound",
+  "category": "PANTRY",
   "estimated_price_per_unit": 1.99,
   "total_price": 1.99,
   "confidence": 0.90,
@@ -145,16 +173,57 @@ Output:
 {
   "suggested_quantity": 32,
   "unit": "ounce",
+  "category": "DAIRY",
   "estimated_price_per_unit": 0.19,
   "total_price": 5.99,
   "confidence": 0.85,
   "reasoning": "Large 32oz container, typical size for weekly consumption. Price per ounce is around $0.19 for mid-tier brands."
 }
 
+Input: "Sourdough Baguette"
+Output:
+{
+  "suggested_quantity": 1,
+  "unit": "each",
+  "category": "BAKERY",
+  "estimated_price_per_unit": 3.49,
+  "total_price": 3.49,
+  "confidence": 0.80,
+  "reasoning": "Fresh bakery sourdough baguette, typical pricing for in-store bakery items. Not $5.99 - actual bakery bread is cheaper."
+}
+
+Input: "Lamb Shank"
+Output:
+{
+  "suggested_quantity": 2,
+  "unit": "pound",
+  "category": "MEAT",
+  "estimated_price_per_unit": 8.99,
+  "total_price": 17.98,
+  "confidence": 0.75,
+  "reasoning": "Lamb shanks are premium meat, priced higher than chicken or pork. Typical pricing is $8-10/lb for bone-in shanks."
+}
+
+Input: "Chicken Thighs"
+Output:
+{
+  "suggested_quantity": 2,
+  "unit": "pound",
+  "category": "MEAT",
+  "estimated_price_per_unit": 3.49,
+  "total_price": 6.98,
+  "confidence": 0.85,
+  "reasoning": "Chicken thighs are typically cheaper than breasts. 2 lbs is a typical household meal portion."
+}
+
 IMPORTANT REMINDERS:
-1. Return ONLY valid JSON, no additional text
-2. All numeric values must be numbers, not strings
-3. Prices should reflect 2025 market conditions
-4. Consider typical household purchase patterns, not commercial/bulk
-5. If unsure, err on the side of common household or individual consumption sizes
-6. Base estimates on Walmart and Amazon Fresh pricing, not premium stores
+1. ALWAYS include "category" field - it is REQUIRED, not optional
+2. Category must be UPPERCASE from the valid list
+3. Return ONLY valid JSON, no additional text
+4. All numeric values must be numbers, not strings
+5. Prices should reflect 2025 market conditions with REALISTIC DIVERSITY
+6. DO NOT default to $5.99 - research actual typical prices for each specific item
+7. Consider typical household purchase patterns, not commercial/bulk
+8. If unsure about category, use the most specific option or OTHERS
+9. Base estimates on Walmart and Amazon Fresh pricing, not premium stores
+10. Different items should have different prices - aim for realism, not uniformity

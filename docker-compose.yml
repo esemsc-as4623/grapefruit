@@ -12,7 +12,8 @@ services:
       - "${DB_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      # Database initialization scripts (run in alphabetical order)
+      # Database initialization scripts (run automatically on first startup, in alphabetical order)
+      # These scripts create all tables, seed demo data, and populate the Amazon grocery catalog
       - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql
       - ./database/add_cart_table.sql:/docker-entrypoint-initdb.d/02-add-cart.sql
       - ./database/add_consumption_history.sql:/docker-entrypoint-initdb.d/03-add-consumption.sql

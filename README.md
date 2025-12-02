@@ -18,10 +18,13 @@ cd grapefruit
 cp .env.example .env
 # Edit .env with your API keys (especially ASI_API_KEY for LLM)
 
-# Start all services with Docker
+# Start all services with Docker (fresh installation)
 docker compose up -d
 
-# Wait for services to be healthy, then test
+# Wait ~15 seconds for database initialization to complete
+sleep 15
+
+# Verify the application is running
 curl http://localhost:5000/health
 curl http://localhost:5000/inventory
 
@@ -30,16 +33,97 @@ curl http://localhost:5000/inventory
 # Backend API: http://localhost:5000
 ```
 
+### ⚠️ Important: First-Time Setup
+
+The database is **automatically initialized** on first startup. However, if you experience issues or the database already exists from a previous installation:
+
+```bash
+# RECOMMENDED: Complete reset for a fresh start
+docker compose down              # Stop all containers
+docker volume rm grapefruit_postgres_data  # Remove old database
+docker compose up -d             # Start fresh with auto-initialization
+
+# Wait for initialization (all 6 SQL scripts run automatically)
+sleep 15
+
+# Verify database is properly initialized
+docker exec -it grapefruit-db psql -U grapefruit -d grapefruit -c "\dt"
+# Should show 8 tables: inventory, cart, orders, preferences, 
+#                       consumption_history, amazon_catalog, to_order, background_jobs
+
+# Check inventory has sample data
+docker exec -it grapefruit-db psql -U grapefruit -d grapefruit -c "SELECT COUNT(*) FROM inventory;"
+# Should return 15 items
+```
+
 ### Database Management
 
 ```bash
-# Reseed database with fresh demo data
-cat database/seed.sql | docker exec -i grapefruit-db psql -U grapefruit -d grapefruit # for inventory
-cat database/add_cart_table.sql | docker exec -i grapefruit-db psql -U grapefruit -d grapefruit # for cart
+# To completely reset the database with fresh data
+docker compose down
+docker volume rm grapefruit_postgres_data
+docker compose up -d
 
-# Or reinitialize completely
-docker compose down -v  # Remove volumes
-docker compose up -d    # Recreate with fresh data
+# To inspect the database
+docker exec -it grapefruit-db psql -U grapefruit -d grapefruit
+
+# List all tables
+docker exec -it grapefruit-db psql -U grapefruit -d grapefruit -c "\dt"
+
+# Check table row counts
+docker exec -it grapefruit-db psql -U grapefruit -d grapefruit -c "
+  SELECT 'inventory' as table_name, COUNT(*) FROM inventory 
+  UNION ALL SELECT 'amazon_catalog', COUNT(*) FROM amazon_catalog
+  UNION ALL SELECT 'preferences', COUNT(*) FROM preferences;"
+
+# To manually run a SQL script (if needed)
+docker exec -i grapefruit-db psql -U grapefruit -d grapefruit < database/your-script.sql
+```
+
+**Initialization Order:**
+1. `01-init.sql` - Core schema (inventory, preferences, orders tables)
+2. `02-add-cart.sql` - Shopping cart table
+3. `03-add-consumption.sql` - Consumption tracking table
+4. `04-auto-ordering.sql` - Auto-ordering system (amazon_catalog, to_order, background_jobs tables + functions)
+5. `05-seed.sql` - Demo data for inventory and preferences (15 items)
+6. `06-seed-grocery-catalog.sql` - Amazon grocery catalog (138 items)
+
+**What Gets Created:**
+- **8 Tables**: `inventory`, `cart`, `orders`, `preferences`, `consumption_history`, `amazon_catalog`, `to_order`, `background_jobs`
+- **3 Functions**: `detect_zero_inventory()`, `process_to_order()`, `process_deliveries()`
+- **Sample Data**: 15 inventory items, 1 user preference profile, 138 Amazon catalog items
+
+**Verify Initialization:**
+```bash
+# Check that all tables were created
+docker exec -it grapefruit-db psql -U grapefruit -d grapefruit -c "\dt"
+
+# Verify data was seeded
+docker exec -it grapefruit-db psql -U grapefruit -d grapefruit -c "
+  SELECT 'inventory' as table_name, COUNT(*) as rows FROM inventory 
+  UNION ALL SELECT 'amazon_catalog', COUNT(*) FROM amazon_catalog 
+  UNION ALL SELECT 'preferences', COUNT(*) FROM preferences;"
+# Expected: inventory=15, amazon_catalog=138, preferences=1
+
+# Check auto-ordering functions exist
+docker exec -it grapefruit-db psql -U grapefruit -d grapefruit -c "
+  SELECT routine_name FROM information_schema.routines 
+  WHERE routine_schema = 'public' 
+  AND routine_name IN ('detect_zero_inventory', 'process_to_order', 'process_deliveries');"
+# Expected: 3 functions
+```
+
+**Troubleshooting:**
+If your inventory is empty or tables are missing:
+```bash
+# The database volume persisted from a previous run - reset it:
+docker compose down
+docker volume rm grapefruit_postgres_data
+docker compose up -d
+sleep 15  # Wait for initialization
+
+# Check logs if issues persist:
+docker logs grapefruit-db 2>&1 | grep -E "(ERROR|running /docker)"
 ```
 
 ### Running Tests

@@ -9,6 +9,12 @@
 
 INSERT INTO amazon_catalog (id, item_name, category, price, unit, brand, in_stock) VALUES
 
+-- Common Generic Items (for better fuzzy matching)
+(gen_random_uuid(), 'Milk', 'dairy', 5.99, 'gallon', 'Great Value', true),
+(gen_random_uuid(), 'Cream', 'dairy', 5.49, 'pint', 'Horizon', true),
+(gen_random_uuid(), 'Cheese', 'dairy', 6.99, 'lb', 'Tillamook', true),
+(gen_random_uuid(), 'Chocolate', 'pantry', 3.99, 'bar', 'Hershey''s', true),
+
 -- Meat & Seafood
 (gen_random_uuid(), 'Chicken Breast', 'meat', 7.99, 'lb', 'Tyson', true),
 (gen_random_uuid(), 'Ground Beef', 'meat', 5.99, 'lb', '80/20 Lean', true),

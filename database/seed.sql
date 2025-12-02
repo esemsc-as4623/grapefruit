@@ -4,7 +4,14 @@
 -- Date: 2025-11-30
 
 -- Clear existing data (for re-seeding during development)
-TRUNCATE TABLE inventory, preferences, orders CASCADE;
+-- Use DO block to handle case where tables might be empty on first run
+DO $$
+BEGIN
+    -- Only truncate if tables exist and have data
+    IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'inventory') THEN
+        TRUNCATE TABLE inventory, preferences, orders CASCADE;
+    END IF;
+END $$;
 
 -- ============================================
 -- SEED USER PREFERENCES

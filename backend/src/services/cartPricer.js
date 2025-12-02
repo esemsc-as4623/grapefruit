@@ -114,16 +114,23 @@ function parseCartPricingResponse(response) {
     
     const parsed = JSON.parse(cleaned);
     
-    // Validate required fields
+    // Validate required fields (including category)
     if (
       typeof parsed.suggested_quantity !== 'number' ||
       typeof parsed.unit !== 'string' ||
+      typeof parsed.category !== 'string' ||
       typeof parsed.estimated_price_per_unit !== 'number' ||
       typeof parsed.total_price !== 'number' ||
       typeof parsed.confidence !== 'number'
     ) {
       logger.warn('Invalid LLM pricing response structure:', parsed);
       return null;
+    }
+    
+    // Validate category is uppercase
+    if (parsed.category !== parsed.category.toUpperCase()) {
+      logger.warn('Category not uppercase, normalizing:', parsed.category);
+      parsed.category = parsed.category.toUpperCase();
     }
     
     // Validate ranges
@@ -156,15 +163,17 @@ function getFallbackPricing(itemName, category = null) {
   logger.info(`Using fallback pricing for: ${itemName}`);
   
   const normalizedName = itemName.toLowerCase();
-  const cat = category?.toLowerCase();
+  let cat = category?.toUpperCase() || null;
   
   // Rule-based pricing by category and common items
   let quantity = 1;
   let unit = 'count';
-  let pricePerUnit = 5.99; // Default price
+  let pricePerUnit = 3.99; // Default price (changed from $5.99 for diversity)
   
   // Dairy products
-  if (cat === 'dairy' || normalizedName.includes('milk')) {
+  if (cat === 'DAIRY' || normalizedName.includes('milk') || normalizedName.includes('cheese') || 
+      normalizedName.includes('yogurt') || normalizedName.includes('butter') || normalizedName.includes('cream')) {
+    cat = 'DAIRY';
     if (normalizedName.includes('milk')) {
       quantity = 1;
       unit = 'gallon';
@@ -181,11 +190,17 @@ function getFallbackPricing(itemName, category = null) {
       quantity = 1;
       unit = 'pound';
       pricePerUnit = 4.99;
+    } else if (normalizedName.includes('cream')) {
+      quantity = 1;
+      unit = 'pint';
+      pricePerUnit = 3.29;
     }
   }
   
   // Produce
-  else if (cat === 'produce') {
+  else if (cat === 'PRODUCE' || normalizedName.includes('banana') || normalizedName.includes('apple') ||
+           normalizedName.includes('lettuce') || normalizedName.includes('tomato') || normalizedName.includes('potato')) {
+    cat = 'PRODUCE';
     if (normalizedName.includes('banana')) {
       quantity = 3;
       unit = 'pound';
@@ -210,16 +225,30 @@ function getFallbackPricing(itemName, category = null) {
       // Generic produce
       quantity = 1;
       unit = 'pound';
-      pricePerUnit = 2.99;
+      pricePerUnit = 2.49;
     }
   }
   
   // Meat
-  else if (cat === 'meat') {
-    if (normalizedName.includes('chicken')) {
+  else if (cat === 'MEAT' || normalizedName.includes('chicken') || normalizedName.includes('beef') ||
+           normalizedName.includes('pork') || normalizedName.includes('lamb') || normalizedName.includes('turkey')) {
+    cat = 'MEAT';
+    if (normalizedName.includes('chicken breast')) {
       quantity = 2;
       unit = 'pound';
       pricePerUnit = 4.99;
+    } else if (normalizedName.includes('chicken thigh')) {
+      quantity = 2;
+      unit = 'pound';
+      pricePerUnit = 3.49;
+    } else if (normalizedName.includes('chicken')) {
+      quantity = 2;
+      unit = 'pound';
+      pricePerUnit = 4.29;
+    } else if (normalizedName.includes('lamb')) {
+      quantity = 2;
+      unit = 'pound';
+      pricePerUnit = 8.99;
     } else if (normalizedName.includes('beef') || normalizedName.includes('steak')) {
       quantity = 1.5;
       unit = 'pound';
@@ -231,30 +260,49 @@ function getFallbackPricing(itemName, category = null) {
     } else if (normalizedName.includes('ground')) {
       quantity = 1;
       unit = 'pound';
-      pricePerUnit = 5.99;
+      pricePerUnit = 5.49;
     } else {
       quantity = 1;
       unit = 'pound';
-      pricePerUnit = 6.99;
+      pricePerUnit = 6.49;
     }
   }
   
   // Eggs
   else if (normalizedName.includes('egg')) {
+    cat = 'DAIRY';
     quantity = 12;
     unit = 'count';
     pricePerUnit = 0.29; // Per egg
   }
   
-  // Bread
-  else if (cat === 'bread' || normalizedName.includes('bread')) {
-    quantity = 1;
-    unit = 'loaf';
-    pricePerUnit = 2.99;
+  // Bakery
+  else if (cat === 'BAKERY' || normalizedName.includes('bread') || normalizedName.includes('bagel') ||
+           normalizedName.includes('baguette') || normalizedName.includes('croissant')) {
+    cat = 'BAKERY';
+    if (normalizedName.includes('bread')) {
+      quantity = 1;
+      unit = 'loaf';
+      pricePerUnit = 2.99;
+    } else if (normalizedName.includes('bagel')) {
+      quantity = 6;
+      unit = 'count';
+      pricePerUnit = 0.50;
+    } else if (normalizedName.includes('baguette')) {
+      quantity = 1;
+      unit = 'each';
+      pricePerUnit = 3.49;
+    } else if (normalizedName.includes('croissant')) {
+      quantity = 4;
+      unit = 'count';
+      pricePerUnit = 0.99;
+    }
   }
   
   // Pantry staples
-  else if (cat === 'pantry') {
+  else if (cat === 'PANTRY' || normalizedName.includes('pasta') || normalizedName.includes('rice') ||
+           normalizedName.includes('beans') || normalizedName.includes('cereal')) {
+    cat = 'PANTRY';
     if (normalizedName.includes('pasta') || normalizedName.includes('spaghetti')) {
       quantity = 1;
       unit = 'pound';
@@ -274,28 +322,24 @@ function getFallbackPricing(itemName, category = null) {
     } else {
       quantity = 1;
       unit = 'package';
-      pricePerUnit = 3.99;
+      pricePerUnit = 3.49;
     }
+  }
+  
+  // Default to OTHERS if no category matched
+  if (!cat) {
+    cat = 'OTHERS';
   }
   
   // Calculate total
   const totalPrice = quantity * pricePerUnit;
-  
-  // Normalize category to uppercase for consistency
-  let normalizedCategory = 'OTHERS';
-  if (cat) {
-    const catUpper = cat.toUpperCase();
-    if (['DAIRY', 'PRODUCE', 'MEAT', 'PANTRY', 'BREAD', 'OTHERS'].includes(catUpper)) {
-      normalizedCategory = catUpper;
-    }
-  }
   
   return {
     suggested_quantity: quantity,
     unit: unit,
     estimated_price_per_unit: pricePerUnit,
     total_price: parseFloat(totalPrice.toFixed(2)),
-    category: normalizedCategory,
+    category: cat,
     confidence: 0.6, // Lower confidence for fallback
     reasoning: 'Rule-based fallback pricing (LLM unavailable)',
     source: 'fallback',

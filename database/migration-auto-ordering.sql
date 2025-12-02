@@ -94,15 +94,18 @@ CREATE INDEX idx_background_jobs_started_at ON background_jobs(started_at DESC);
 -- ============================================
 INSERT INTO amazon_catalog (item_name, category, price, unit, brand, in_stock) VALUES
 -- Dairy
+('Milk', 'dairy', 5.99, 'gallon', 'Great Value', true),  -- Generic milk entry
 ('Whole Milk', 'dairy', 4.99, 'gallon', 'Organic Valley', true),
 ('2% Milk', 'dairy', 4.49, 'gallon', 'Horizon', true),
 ('Skim Milk', 'dairy', 4.29, 'gallon', 'Great Value', true),
 ('Half and Half', 'dairy', 3.99, 'quart', 'Organic Valley', true),
 ('Heavy Cream', 'dairy', 5.49, 'pint', 'Horizon', true),
+('Cream', 'dairy', 5.49, 'pint', 'Horizon', true),  -- Generic cream entry
 ('Yogurt', 'dairy', 5.99, 'count', 'Chobani', true),
 ('Butter', 'dairy', 6.99, 'lb', 'Kerrygold', true),
 ('Cream Cheese', 'dairy', 3.49, 'count', 'Philadelphia', true),
 ('Cheddar Cheese', 'dairy', 7.99, 'lb', 'Tillamook', true),
+('Cheese', 'dairy', 6.99, 'lb', 'Tillamook', true),  -- Generic cheese entry
 ('Eggs', 'dairy', 5.99, 'dozen', 'Organic Valley', true),
 
 -- Produce
@@ -142,6 +145,8 @@ INSERT INTO amazon_catalog (item_name, category, price, unit, brand, in_stock) V
 ('Maple Syrup', 'pantry', 11.99, 'bottle', 'Pure', true),
 ('Oatmeal', 'pantry', 5.99, 'container', 'Quaker', true),
 ('Cereal', 'pantry', 5.99, 'box', 'General Mills', true),
+('Chocolate', 'pantry', 3.99, 'bar', 'Hershey''s', true),
+('Chocolate Chips', 'pantry', 4.49, 'bag', 'Nestle', true),
 
 -- Frozen
 ('Frozen Pizza', 'frozen', 7.99, 'count', 'DiGiorno', true),
@@ -381,7 +386,7 @@ ORDER BY t.detected_at ASC;
 
 CREATE OR REPLACE VIEW orders_pending_delivery AS
 SELECT o.*,
-       EXTRACT(DAY FROM (o.delivery_date - CURRENT_DATE)) as days_until_delivery
+       (o.delivery_date - CURRENT_DATE) as days_until_delivery
 FROM orders o
 WHERE o.status = 'placed'
   AND o.delivery_date IS NOT NULL
