@@ -69,15 +69,77 @@ docker exec -it grapefruit-db psql -U grapefruit -d grapefruit -c "SELECT COUNT(
 
 ### Quick Production Deploy
 
-```bash
-# 1. Configure environment
-cp .env.production.example .env
-# Edit .env with your production settings
+1. Configure environment
 
-# 2. Deploy
+```bash
+# Production Environment Configuration
+# Copy this file to .env and customize for your deployment
+
+# ============================================
+# DATABASE CONFIGURATION
+# ============================================
+DB_USER=grapefruit
+DB_PASSWORD=CHANGE_THIS_TO_SECURE_PASSWORD
+DB_NAME=grapefruit
+DB_PORT=5432
+
+# ============================================
+# BACKEND CONFIGURATION
+# ============================================
+NODE_ENV=production
+BACKEND_PORT=5000
+
+# Encryption key for sensitive data (must be 32+ characters)
+# Generate with: openssl rand -hex 32
+ENCRYPTION_KEY=CHANGE_THIS_TO_RANDOM_32_CHAR_STRING
+
+# Logging level (debug, info, warn, error)
+LOG_LEVEL=info
+
+# ============================================
+# LLM API CONFIGURATION
+# ============================================
+# Your ASI Cloud API key
+ASI_API_KEY=your_asi_api_key_here
+
+# ASI Cloud endpoint (default is ASI Cloud)
+ASI_BASE_URL=https://inference.asicloud.cudos.org/v1
+
+# Model to use (asi1-mini, asi1-large, etc.)
+ASI_MODEL=asi1-mini
+
+# Enable debug logging for LLM calls (true/false)
+LLM_DEBUG=false
+
+# Enable LLM response caching (true/false)
+# Recommended: true for production (reduces costs)
+LLM_CACHE_ENABLED=true
+
+# ============================================
+# FRONTEND CONFIGURATION
+# ============================================
+# URL to backend API (update with your domain in production)
+REACT_APP_API_URL=http://localhost:5000
+
+# Frontend port (80 for production, 3000 for development)
+FRONTEND_PORT=80
+
+# ============================================
+# OPTIONAL: Auto-ordering Configuration
+# ============================================
+# Enable automatic order detection (true/false)
+AUTO_ORDER_ENABLED=true
+
+# Threshold in days for auto-order suggestions
+AUTO_ORDER_THRESHOLD_DAYS=7
+```
+
+2. Deploy and Verify
+```bash
+# 1. Deploy
 docker compose -f docker-compose.prod.yml up -d --build
 
-# 3. Verify
+# 2. Verify
 curl http://localhost:5000/health
 docker compose -f docker-compose.prod.yml logs | grep migration
 ```
