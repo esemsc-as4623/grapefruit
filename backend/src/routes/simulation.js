@@ -1,10 +1,9 @@
 const express = require('express');
 const Joi = require('joi');
-const { Inventory, Orders, Preferences, Cart } = require('../models/db');
+const { Inventory, Orders, Preferences } = require('../models/db');
 const db = require('../config/database');
 const logger = require('../utils/logger');
 const consumptionLearner = require('../services/consumptionLearner');
-const { suggestPriceAndQuantity } = require('../services/cartPricer');
 
 const router = express.Router();
 
@@ -142,7 +141,13 @@ router.post('/day', async (req, res, next) => {
     // Deplete items with known consumption rates with realistic variability
     for (const item of itemsWithConsumption) {
       const stepSize = getStepSize(item.unit);
-      const baseConsumption = item.average_daily_consumption * 1; // 1 day
+      
+      // Apply category-based consumption multiplier
+      // Dairy, produce, bread, and meat are 2x more likely to be consumed
+      const perishableCategories = ['dairy', 'produce', 'bread', 'meat'];
+      const categoryMultiplier = perishableCategories.includes(item.category?.toLowerCase()) ? 2.0 : 1.0;
+      
+      const baseConsumption = item.average_daily_consumption * categoryMultiplier; // Apply multiplier
       
       // Add realistic consumption variability
       const rand = Math.random();
@@ -182,41 +187,8 @@ router.post('/day', async (req, res, next) => {
         itemCreatedAt: item.created_at,
       });
       
-      // If quantity reaches 0 or goes below 0, delete and optionally add to cart
+      // If quantity reaches 0 or goes below 0, delete item
       if (newQuantity <= 0) {
-        const shouldAddToCart = Math.random() < 0.3; // 30% chance
-        
-        if (shouldAddToCart) {
-          // Add to cart before deleting with LLM-suggested quantity
-          try {
-            const llmSuggestion = await suggestPriceAndQuantity(item.item_name, item.category);
-            await Cart.addItem({
-              user_id: userId,
-              item_name: item.item_name,
-              quantity: llmSuggestion.suggested_quantity,
-              unit: llmSuggestion.unit,
-              category: llmSuggestion.category || item.category, // Use LLM category or fallback
-              estimated_price: llmSuggestion.estimated_price_per_unit,
-              source: 'simulation',
-            });
-            cartAddedItems.push(item.item_name);
-            logger.info(`Added ${item.item_name} to cart (depleted to 0) - LLM suggested ${llmSuggestion.suggested_quantity} ${llmSuggestion.unit} @ $${llmSuggestion.estimated_price_per_unit}`);
-          } catch (error) {
-            logger.error(`Failed to get LLM suggestion for ${item.item_name}, using fallback`, error);
-            // Fallback to simple addition
-            await Cart.addItem({
-              user_id: userId,
-              item_name: item.item_name,
-              quantity: 1,
-              unit: item.unit,
-              category: item.category,
-              source: 'simulation',
-            });
-            cartAddedItems.push(item.item_name);
-            logger.info(`Added ${item.item_name} to cart (depleted to 0) - fallback quantity`);
-          }
-        }
-        
         await Inventory.delete(item.id);
         deletedItems.push(item.item_name);
         logger.info(`Deleted item ${item.item_name} - quantity reached ${newQuantity.toFixed(2)}`);
@@ -280,9 +252,13 @@ router.post('/day', async (req, res, next) => {
           // No consumption rate - reduce by step-based amount
           const stepSize = getStepSize(item.unit);
           
-          // Deplete by 1-3 steps (depending on step size)
+          // Apply category-based consumption multiplier
+          const perishableCategories = ['dairy', 'produce', 'bread', 'meat'];
+          const categoryMultiplier = perishableCategories.includes(item.category?.toLowerCase()) ? 2.0 : 1.0;
+          
+          // Deplete by 1-3 steps (depending on step size and category)
           const stepsToDeplete = Math.floor(Math.random() * 3) + 1;
-          const depletionAmount = stepsToDeplete * stepSize;
+          const depletionAmount = stepsToDeplete * stepSize * categoryMultiplier;
           const newQuantity = roundToStep(item.quantity - depletionAmount, stepSize);
           
           // Record consumption event for ML learning
@@ -299,99 +275,16 @@ router.post('/day', async (req, res, next) => {
           });
           
           if (newQuantity <= 0) {
-            // // Very low quantity - delete and add to cart
-            // await Cart.addItem({
-            //   user_id: userId,
-            //   item_name: item.item_name,
-            //   quantity: 1,
-            //   unit: item.unit,
-            //   category: item.category,
-            //   source: 'simulation',
-            // });
-            cartAddedItems.push(item.item_name);
+            // Very low quantity - delete
             await Inventory.delete(item.id);
             deletedItems.push(item.item_name);
-            logger.info(`Deleted ${item.item_name} (depleted to 0 or below), added to cart`);
+            logger.info(`Deleted ${item.item_name} (depleted to 0 or below)`);
           } else {
             const updated = await Inventory.update(item.id, {
               quantity: parseFloat(newQuantity.toFixed(2)),
             });
             updatedItems.push(updated);
             logger.info(`Depleted ${item.item_name} by ${depletionAmount.toFixed(2)} to ${newQuantity.toFixed(2)} ${item.unit}`);
-          }
-        }
-      }
-    }
-    
-    // Smart shopping list additions based on depletion levels
-    // Check remaining items (not consumed today) for potential cart additions
-    const remainingItems = await Inventory.findByUser(userId);
-    
-    for (const item of remainingItems) {
-      // Calculate depletion percentage
-      let depletionScore = 0;
-      
-      if (item.predicted_runout) {
-        const daysUntilRunout = (new Date(item.predicted_runout) - new Date()) / (1000 * 60 * 60 * 24);
-        
-        if (daysUntilRunout <= 0) {
-          depletionScore = 0.5; // Already out or about to run out
-        } else if (daysUntilRunout <= 3) {
-          depletionScore = 0.3; // 30% chance if running out in 3 days
-        } else if (daysUntilRunout <= 7) {
-          depletionScore = 0.15; // 15% chance if running out in a week
-        } else if (daysUntilRunout <= 14) {
-          depletionScore = 0.05; // 5% chance if running out in 2 weeks
-        } else {
-          depletionScore = 0.01; // 1% chance otherwise
-        }
-      } else {
-        // No predicted runout - use quantity-based heuristic
-        if (item.quantity < 1) {
-          depletionScore = 0.25;
-        } else if (item.quantity < 3) {
-          depletionScore = 0.1;
-        } else {
-          depletionScore = 0.0;
-        }
-      }
-      
-      // Add random element to prevent deterministic behavior
-      if (Math.random() < depletionScore) {
-        // Check if item is already in cart to avoid duplicates
-        const existingCartItems = await Cart.findByUser(userId);
-        const alreadyInCart = existingCartItems.some(cartItem => 
-          cartItem.item_name.toLowerCase() === item.item_name.toLowerCase()
-        );
-        
-        if (!alreadyInCart && !cartAddedItems.includes(item.item_name)) {
-          try {
-            // Use LLM to suggest appropriate quantity and pricing
-            const llmSuggestion = await suggestPriceAndQuantity(item.item_name, item.category);
-            await Cart.addItem({
-              user_id: userId,
-              item_name: item.item_name,
-              quantity: llmSuggestion.suggested_quantity,
-              unit: llmSuggestion.unit,
-              category: llmSuggestion.category || item.category, // Use LLM category or fallback
-              estimated_price: llmSuggestion.estimated_price_per_unit,
-              source: 'simulation',
-            });
-            cartAddedItems.push(item.item_name);
-            logger.info(`Added ${item.item_name} to cart (depletion score: ${depletionScore.toFixed(2)}) - LLM suggested ${llmSuggestion.suggested_quantity} ${llmSuggestion.unit} @ $${llmSuggestion.estimated_price_per_unit}`);
-          } catch (error) {
-            logger.error(`Failed to get LLM suggestion for ${item.item_name}, using fallback`, error);
-            // Fallback to simple addition
-            await Cart.addItem({
-              user_id: userId,
-              item_name: item.item_name,
-              quantity: 1,
-              unit: item.unit,
-              category: item.category,
-              source: 'simulation',
-            });
-            cartAddedItems.push(item.item_name);
-            logger.info(`Added ${item.item_name} to cart (depletion score: ${depletionScore.toFixed(2)}) - fallback quantity`);
           }
         }
       }

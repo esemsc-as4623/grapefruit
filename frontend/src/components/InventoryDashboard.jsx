@@ -103,12 +103,13 @@ const InventoryDashboard = () => {
       // Determine source based on confirmingDelete
       const source = confirmingDelete?.source || 'trash';
 
-      // Add to cart - let LLM suggest quantity, unit, and price
+      // Add to cart - use inventory unit, let LLM suggest quantity and price
       await cartAPI.addItem({
         item_name: item.item_name,
+        unit: item.unit, // Use unit from inventory
         category: item.category,
         source: source,
-        use_llm_pricing: true, // Enable LLM pricing
+        use_llm_pricing: true, // Enable LLM pricing for quantity and price
       });
       
       await inventoryAPI.delete(itemId);
@@ -133,9 +134,10 @@ const InventoryDashboard = () => {
     try {
       await cartAPI.addItem({
         item_name: item.item_name,
+        unit: item.unit, // Use unit from inventory
         category: item.category,
         source: 'cart_icon',
-        use_llm_pricing: true, // Let LLM suggest quantity, unit, and price
+        use_llm_pricing: true, // Let LLM suggest quantity and price
       });
       
       // Show success feedback (you could add a toast notification here)
@@ -595,7 +597,7 @@ const InventoryDashboard = () => {
                 {/* Consumption rate */}
                 {hasEnoughHistory && item.average_daily_consumption > 0 && (
                   <p className="text-xs text-gray-500 mb-2">
-                    Consumes ~{parseFloat(item.average_daily_consumption).toFixed(2)} {item.unit}/day
+                    Consumed at ~{parseFloat(item.average_daily_consumption).toFixed(2)} {item.unit}/day
                   </p>
                 )}
 

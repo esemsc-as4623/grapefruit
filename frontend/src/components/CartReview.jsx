@@ -133,11 +133,17 @@ const CartReview = () => {
       setAddingItem(true);
       setError(null);
       
-      await cartAPI.addItem({
-        item_name: newItemName.trim(),
-        use_llm_pricing: true, // Let AI suggest everything
-        source: 'manual',
-      });
+      // Split by comma to handle multiple items
+      const itemNames = newItemName.split(',').map(name => name.trim()).filter(name => name);
+      
+      // Add each item separately
+      for (const itemName of itemNames) {
+        await cartAPI.addItem({
+          item_name: itemName,
+          use_llm_pricing: true, // Let AI suggest everything
+          source: 'manual',
+        });
+      }
       
       setNewItemName('');
       await loadCart();
@@ -214,13 +220,44 @@ const CartReview = () => {
         </div>
       )}
 
+      {/* Quick Add Item Form - Always visible */}
+      <div className="bg-white border border-gray-200 rounded-lg p-6">
+        <form onSubmit={handleQuickAddItem} className="flex gap-3">
+          <input
+            type="text"
+            value={newItemName}
+            onChange={(e) => setNewItemName(e.target.value)}
+            placeholder="e.g., Milk, Bananas, Chicken Breast"
+            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-grapefruit-500 focus:border-grapefruit-500"
+            disabled={addingItem}
+          />
+          <button
+            type="submit"
+            disabled={addingItem || !newItemName.trim()}
+            className="px-6 py-2 bg-grapefruit-500 text-white rounded-lg hover:bg-grapefruit-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 whitespace-nowrap"
+          >
+            {addingItem ? (
+              <>
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                Adding...
+              </>
+            ) : (
+              <>
+                <Plus className="w-5 h-5" />
+                Add to Cart
+              </>
+            )}
+          </button>
+        </form>
+      </div>
+
       {/* Empty Cart State */}
       {cartItems.length === 0 ? (
         <div className="text-center py-12 bg-gray-50 rounded-lg">
           <ShoppingCart className="w-16 h-16 mx-auto text-gray-400 mb-4" />
           <h3 className="text-lg font-medium text-gray-900">Your cart is empty</h3>
           <p className="text-gray-600 mt-1">
-            Add items from your inventory or manually to get started
+            Add items using the form above to get started
           </p>
         </div>
       ) : (
@@ -363,46 +400,6 @@ const CartReview = () => {
             })()}
           </div>
 
-          {/* Quick Add Item Form */}
-          <div className="bg-white border border-gray-200 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Add Item to Cart</h3>
-            <form onSubmit={handleQuickAddItem} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Item Name
-                </label>
-                <input
-                  type="text"
-                  value={newItemName}
-                  onChange={(e) => setNewItemName(e.target.value)}
-                  placeholder="e.g., Milk, Bananas, Chicken Breast"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-grapefruit-500 focus:border-grapefruit-500"
-                  disabled={addingItem}
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={addingItem || !newItemName.trim()}
-                className="w-full px-4 py-2 bg-grapefruit-500 text-white rounded-lg hover:bg-grapefruit-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {addingItem ? (
-                  <>
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                    Getting AI Suggestions...
-                  </>
-                ) : (
-                  <>
-                    <Plus className="w-5 h-5" />
-                    Add with AI Pricing
-                  </>
-                )}
-              </button>
-            </form>
-            <p className="text-xs text-gray-500 mt-2">
-              AI will automatically suggest quantity and price based on typical grocery store prices
-            </p>
-          </div>
-
           {/* Help Text */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
             <div className="flex items-start gap-3">
@@ -410,7 +407,7 @@ const CartReview = () => {
               <div className="text-sm text-blue-800">
                 <p className="font-medium">How it works:</p>
                 <ul className="list-disc list-inside mt-2 space-y-1">
-                  <li>Add items manually above or from your inventory</li>
+                  <li>Add items using the form above (separate multiple items with commas)</li>
                   <li>AI suggests realistic quantities and prices from Walmart/Amazon</li>
                   <li>Adjust quantities using the + and - buttons</li>
                   <li>Click "Create Order" to submit for approval</li>
