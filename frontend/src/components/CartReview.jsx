@@ -178,7 +178,7 @@ const CartReview = () => {
       meat: '🥩',
       pantry: '🥫',
       bread: '🍞',
-      other: '📦',
+      others: '📦',
     };
     return icons[category?.toLowerCase()] || '📦';
   };

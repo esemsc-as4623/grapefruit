@@ -54,6 +54,15 @@ QUANTITY GUIDELINES:
   * Eggs: 1 dozen (12 count)
   * Beverages: 1 container or 6-12 pack
 
+CATEGORY CLASSIFICATION:
+Categorize items into one of these standard categories:
+- DAIRY: Milk, cheese, yogurt, butter, cream, eggs
+- PRODUCE: Fresh fruits, vegetables, herbs, salads
+- MEAT: Chicken, beef, pork, seafood, deli meats
+- PANTRY: Pasta, rice, canned goods, cereals, snacks, condiments, spices
+- BREAD: Bread, bagels, tortillas, baked goods
+- OTHERS: Items that don't fit the above categories
+
 UNIT STANDARDIZATION:
 - Use standard grocery units:
   * Liquids: gallon, quart, liter, ounce, fluid ounce
@@ -74,6 +83,7 @@ Return ONLY a valid JSON object with this exact structure:
   "unit": "<string>",
   "estimated_price_per_unit": <number>,
   "total_price": <number>,
+  "category": "<DAIRY|PRODUCE|MEAT|PANTRY|BREAD|OTHERS>",
   "confidence": <number between 0 and 1>,
   "reasoning": "<brief explanation of your suggestion>"
 }
@@ -87,6 +97,7 @@ Output:
   "unit": "gallon",
   "estimated_price_per_unit": 4.29,
   "total_price": 4.29,
+  "category": "DAIRY",
   "confidence": 0.95,
   "reasoning": "Standard 1 gallon whole milk, typical household size. Walmart/Amazon average pricing."
 }
@@ -98,6 +109,7 @@ Output:
   "unit": "pound",
   "estimated_price_per_unit": 0.59,
   "total_price": 1.77,
+  "category": "PRODUCE",
   "confidence": 0.90,
   "reasoning": "Typical bunch of bananas (3-5 lbs), standard per-pound pricing at major retailers."
 }
@@ -109,6 +121,7 @@ Output:
   "unit": "pound",
   "estimated_price_per_unit": 4.99,
   "total_price": 9.98,
+  "category": "MEAT",
   "confidence": 0.85,
   "reasoning": "Boneless skinless chicken breast, 2 lbs for a typical household meal. Price varies by brand but $4.99/lb is mid-range."
 }
@@ -120,6 +133,7 @@ Output:
   "unit": "count",
   "estimated_price_per_unit": 0.29,
   "total_price": 3.49,
+  "category": "DAIRY",
   "confidence": 0.95,
   "reasoning": "One dozen large eggs, standard carton size. Average price around $3.49/dozen or ~$0.29/egg."
 }
@@ -131,6 +145,7 @@ Output:
   "unit": "pound",
   "estimated_price_per_unit": 1.99,
   "total_price": 1.99,
+  "category": "PANTRY",
   "confidence": 0.90,
   "reasoning": "Standard 1-lb box of pasta (spaghetti, penne, etc.). Mid-tier brand pricing."
 }
@@ -142,6 +157,7 @@ Output:
   "unit": "ounce",
   "estimated_price_per_unit": 0.19,
   "total_price": 5.99,
+  "category": "DAIRY",
   "confidence": 0.85,
   "reasoning": "Large 32oz container, typical size for weekly consumption. Price per ounce is around $0.19 for mid-tier brands."
 }

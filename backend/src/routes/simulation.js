@@ -193,7 +193,7 @@ router.post('/day', async (req, res, next) => {
               item_name: item.item_name,
               quantity: llmSuggestion.suggested_quantity,
               unit: llmSuggestion.unit,
-              category: item.category,
+              category: llmSuggestion.category || item.category, // Use LLM category or fallback
               estimated_price: llmSuggestion.estimated_price_per_unit,
               source: 'simulation',
             });
@@ -371,7 +371,7 @@ router.post('/day', async (req, res, next) => {
               item_name: item.item_name,
               quantity: llmSuggestion.suggested_quantity,
               unit: llmSuggestion.unit,
-              category: item.category,
+              category: llmSuggestion.category || item.category, // Use LLM category or fallback
               estimated_price: llmSuggestion.estimated_price_per_unit,
               source: 'simulation',
             });

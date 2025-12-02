@@ -51,6 +51,7 @@ async function suggestPriceAndQuantity(itemName, category = null) {
       unit: parsed.unit,
       price: parsed.estimated_price_per_unit,
       total: parsed.total_price,
+      category: parsed.category,
       confidence: parsed.confidence,
     });
     
@@ -59,6 +60,7 @@ async function suggestPriceAndQuantity(itemName, category = null) {
       unit: parsed.unit,
       estimated_price_per_unit: parsed.estimated_price_per_unit,
       total_price: parsed.total_price,
+      category: parsed.category || category, // Use LLM category or fallback to provided
       confidence: parsed.confidence,
       reasoning: parsed.reasoning,
       source: 'llm',
@@ -255,11 +257,21 @@ function getFallbackPricing(itemName, category = null) {
   // Calculate total
   const totalPrice = quantity * pricePerUnit;
   
+  // Normalize category to uppercase for consistency
+  let normalizedCategory = 'OTHERS';
+  if (cat) {
+    const catUpper = cat.toUpperCase();
+    if (['DAIRY', 'PRODUCE', 'MEAT', 'PANTRY', 'BREAD', 'OTHERS'].includes(catUpper)) {
+      normalizedCategory = catUpper;
+    }
+  }
+  
   return {
     suggested_quantity: quantity,
     unit: unit,
     estimated_price_per_unit: pricePerUnit,
     total_price: parseFloat(totalPrice.toFixed(2)),
+    category: normalizedCategory,
     confidence: 0.6, // Lower confidence for fallback
     reasoning: 'Rule-based fallback pricing (LLM unavailable)',
     source: 'fallback',

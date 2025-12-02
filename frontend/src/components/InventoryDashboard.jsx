@@ -249,7 +249,7 @@ const InventoryDashboard = () => {
       meat: { icon: '🥩', color: 'bg-red-50' },
       pantry: { icon: '🥫', color: 'bg-yellow-50' },
       bread: { icon: '🍞', color: 'bg-amber-50' },
-      other: { icon: '📦', color: 'bg-gray-50' },
+      others: { icon: '📦', color: 'bg-gray-50' },
     };
     return categories[category?.toLowerCase()] || { icon: '📦', color: 'bg-gray-50' };
   };

@@ -697,6 +697,9 @@ router.post('/cart', async (req, res, next) => {
         if (!value.estimated_price) {
           itemData.estimated_price = suggestion.estimated_price_per_unit;
         }
+        if (!value.category && suggestion.category) {
+          itemData.category = suggestion.category;
+        }
         
         // Add LLM metadata to notes if not already present
         if (!value.notes) {

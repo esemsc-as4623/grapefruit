@@ -17,7 +17,7 @@ const PreferencesPanel = () => {
   const [allowedVendors, setAllowedVendors] = useState(['walmart', 'amazon']);
 
   // Available categories
-  const categories = ['dairy', 'produce', 'meat', 'pantry', 'bread'];
+  const categories = ['dairy', 'produce', 'meat', 'pantry', 'bread', 'others'];
 
   // Load preferences
   const loadPreferences = async () => {
