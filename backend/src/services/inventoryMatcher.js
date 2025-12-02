@@ -368,11 +368,12 @@ async function applyToInventory(matchResults, userId = 'demo_user') {
           itemCreatedAt: inventoryItem.created_at,
         });
         
-        const updated = await Inventory.update(inventoryItem.id, {
-          quantity: item.newQuantity,
-          last_purchase_date: new Date(),
-          last_purchase_quantity: item.quantity,
-        });
+        // Use addQuantity to properly add to existing quantity and update purchase tracking
+        const updated = await Inventory.addQuantity(
+          inventoryItem.id,
+          item.quantity, // Add the quantity from the receipt
+          inventoryItem.average_daily_consumption
+        );
         
         // Learn and update consumption rate for this item
         const learningResult = await consumptionLearner.learnConsumptionRate(

@@ -244,10 +244,12 @@ router.post('/inventory/bulk', async (req, res, next) => {
           );
           
           if (existing) {
-            // Update quantity (add to existing)
-            const updated = await Inventory.update(existing.id, {
-              quantity: existing.quantity + value.quantity,
-            });
+            // Add quantity to existing item (instead of replacing)
+            const updated = await Inventory.addQuantity(
+              existing.id,
+              value.quantity,
+              value.average_daily_consumption || null
+            );
             results.updated.push(updated);
           } else {
             // Create new
