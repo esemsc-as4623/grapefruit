@@ -397,7 +397,7 @@ async function learnConsumptionRate(userId, itemName, itemContext = {}) {
     }
 
     logger.info(
-      `Learned consumption rate for ${itemName}: ${rate.toFixed(4)} using ${algorithm} (${events.length} data points over ${totalDataDays.toFixed(1)} days)`
+      `Learned consumption rate for ${itemName}: ${rate !== null ? rate.toFixed(4) : 'null'} using ${algorithm} (${events.length} data points over ${totalDataDays.toFixed(1)} days)`
     );
 
     return {
