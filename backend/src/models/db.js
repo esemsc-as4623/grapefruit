@@ -378,8 +378,8 @@ class Preferences {
       const result = await db.query(
         `INSERT INTO preferences 
          (user_id, brand_prefs, allowed_vendors, 
-          notify_low_inventory, notify_order_ready, auto_order_enabled, auto_order_threshold_days)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+          notify_low_inventory, notify_order_ready, auto_order_enabled, auto_order_threshold_days, is_encrypted)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          ON CONFLICT (user_id) 
          DO UPDATE SET
            brand_prefs = EXCLUDED.brand_prefs,
@@ -388,6 +388,7 @@ class Preferences {
            notify_order_ready = EXCLUDED.notify_order_ready,
            auto_order_enabled = EXCLUDED.auto_order_enabled,
            auto_order_threshold_days = EXCLUDED.auto_order_threshold_days,
+           is_encrypted = EXCLUDED.is_encrypted,
            updated_at = CURRENT_TIMESTAMP
          RETURNING *`,
         [
@@ -397,7 +398,8 @@ class Preferences {
           notify_low_inventory,
           notify_order_ready,
           auto_order_enabled,
-          auto_order_threshold_days
+          auto_order_threshold_days,
+          false
         ]
       );
       return decryptRow(result.rows[0], SENSITIVE_FIELDS.preferences);
