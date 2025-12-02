@@ -240,13 +240,13 @@ const ReceiptUploadPrivacy = ({ onReceiptParsed }) => {
 
     const matchData = await matchResponse.json();
 
-    setSuccess(`✅ Receipt processed! Found ${parseData.items.length} items, ${matchData.summary.matched} matched.`);
+    setSuccess(`✅ Receipt processed! Found ${parseData.receipt.items.length} items, ${matchData.summary.matched} matched.`);
     setProcessingStep('');
 
     if (onReceiptParsed) {
       onReceiptParsed({
         receiptId,
-        items: parseData.items,
+        items: parseData.receipt.items,
         matchedItems: matchData.matchedItems,
       });
     }
