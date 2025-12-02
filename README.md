@@ -927,15 +927,6 @@ cp .env.example .env
 }
 ```
 
-**Demo App (`akedo_demo/requirements.txt`):**
-```
-streamlit
-openai
-fastapi
-uvicorn
-pydantic
-```
-
 ---
 
 ## 🚧 Future Enhancements
@@ -1250,58 +1241,6 @@ All endpoints return consistent error responses:
 - `400` - Bad Request (validation error)
 - `404` - Not Found
 - `500` - Internal Server Error
-
----
-
----
-
-## 🎯 Akedo Live Demo
-
-Included in this repository is a **standalone Streamlit demonstration** of an autonomous shopping agent with a synthetic retailer API. This provides a simplified, interactive demo of the core concept.
-
-### Demo Features
-- **Streamlit UI**: Clean web interface for agent interaction
-- **Mock Retailer API**: FastAPI-based synthetic Amazon/Walmart API
-- **Autonomous Agent**: LLM-powered shopping assistant
-- **Live API Integration**: Real-time product search and ordering
-
-### Running the Demo
-
-**Prerequisites:**
-- Python 3.10+
-- OpenAI API key
-
-**Setup:**
-```bash
-cd akedo_demo
-pip install -r requirements.txt
-```
-
-**Run (requires 2 terminals):**
-
-Terminal 1 - Mock Retailer API:
-```bash
-python mock_server.py
-# Server runs on http://0.0.0.0:8000
-```
-
-Terminal 2 - Shopping Assistant UI:
-```bash
-streamlit run demo_ui.py
-# Opens at http://localhost:8501
-```
-
-**Usage:**
-1. Enter your OpenAI API key in the sidebar
-2. Verify "Mock Retailer API" status shows 🟢 Online
-3. Type requests like:
-   - *"Find me some cheap headphones"*
-   - *"Buy 2 packs of AA batteries"*
-   - *"I need a gift for a book lover"*
-
-The agent will autonomously search, decide, and place orders while you watch the API logs in real-time!
-
-For full demo documentation, see [`akedo_demo/README.md`](akedo_demo/README.md).
 
 ---
 
