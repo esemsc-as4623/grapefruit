@@ -59,7 +59,7 @@ const LLM_CONFIG = {
     endpoint: process.env.ASI_BASE_URL || 'https://inference.asicloud.cudos.org/v1',
     apiKey: process.env.ASI_API_KEY,
     
-    temperature: 0.3,
+    temperature: 0.25,
     maxTokens: 400,
     topP: 0.9,
 

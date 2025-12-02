@@ -321,27 +321,39 @@ async function enrichCartWithPrices(cartItems) {
     const enrichedItems = cartItems.map(cartItem => {
       const priceData = priceMap.get(cartItem.item_name);
       const cachedPrice = cartItem.estimated_price ? parseFloat(cartItem.estimated_price) : null;
-      const freshPrice = priceData.price;
+      const catalogPrice = priceData.price;
 
-      // Detect price changes
-      const priceChanged = cachedPrice && Math.abs(cachedPrice - freshPrice) > 0.01;
+      // PRICE STRATEGY:
+      // - Good catalog match (confidence >= 0.7): Use catalog price (may update)
+      // - Poor/no match (confidence < 0.7): Keep original cached price (LLM estimate)
+      const useOriginalPrice = priceData.confidence < 0.7 && cachedPrice;
+      const finalPrice = useOriginalPrice ? cachedPrice : catalogPrice;
+      
+      // Detect price changes (only if we're using catalog prices)
+      const priceChanged = !useOriginalPrice && cachedPrice && Math.abs(cachedPrice - catalogPrice) > 0.01;
+
+      // Use catalog category only if it's a good match (confidence >= 0.7)
+      // Otherwise preserve the cart item's existing category (from LLM)
+      const finalCategory = priceData.confidence >= 0.7 && priceData.category !== 'uncategorized'
+        ? priceData.category
+        : (cartItem.category || priceData.category);
 
       return {
         ...cartItem,
-        price: freshPrice,
-        brand: priceData.brand,
+        price: finalPrice,  // Use smart price (original LLM or fresh catalog)
+        brand: useOriginalPrice ? 'AI Estimated' : priceData.brand,
         unit: priceData.unit,
-        category: priceData.category,
-        priceSource: priceData.source,
+        category: finalCategory,  // Use smart category selection
+        priceSource: useOriginalPrice ? 'llm_estimate_preserved' : priceData.source,
         matchType: priceData.matchType,
         confidence: priceData.confidence,
         catalogName: priceData.catalogName,
-        // Price change detection
+        // Price change detection (only for catalog items)
         cachedPrice,
         priceChanged,
-        priceChange: priceChanged ? freshPrice - cachedPrice : 0,
+        priceChange: priceChanged ? catalogPrice - cachedPrice : 0,
         // Subtotal for this item
-        itemSubtotal: freshPrice * cartItem.quantity
+        itemSubtotal: finalPrice * cartItem.quantity
       };
     });
 

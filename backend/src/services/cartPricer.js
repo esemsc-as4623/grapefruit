@@ -21,6 +21,7 @@
 const { callASICloud } = require('./llmClient');
 const { LLM_CONFIG, getCartPricingPrompt } = require('../config/llm');
 const logger = require('../utils/logger');
+const db = require('../config/database');
 
 /**
  * Suggest quantity, unit, and category for a cart item using LLM
@@ -36,11 +37,42 @@ async function suggestPriceAndQuantity(itemName, category = null) {
   try {
     logger.info(`Suggesting price and quantity for: ${itemName}`);
     
-    // Build the user prompt
+    // Query Amazon catalog for similar items to provide context to LLM
+    let catalogContext = '';
+    try {
+      const catalogQuery = await db.query(
+        `SELECT item_name, price, unit, brand, category 
+         FROM amazon_catalog 
+         WHERE in_stock = true 
+         AND (
+           LOWER(item_name) LIKE LOWER($1) 
+           OR LOWER(item_name) LIKE LOWER($2)
+           OR LOWER(item_name) LIKE LOWER($3)
+         )
+         LIMIT 5`,
+        [`%${itemName}%`, `${itemName}%`, `%${itemName}`]
+      );
+      
+      if (catalogQuery.rows.length > 0) {
+        catalogContext = '\n\nRelevant items from Amazon catalog:\n';
+        catalogQuery.rows.forEach(item => {
+          catalogContext += `- ${item.item_name}: $${item.price}/${item.unit}, Brand: ${item.brand}, Category: ${item.category}\n`;
+        });
+        catalogContext += '\nUse these as reference for realistic pricing and units.';
+        logger.info(`Found ${catalogQuery.rows.length} catalog items for context`);
+      } else {
+        logger.info('No catalog items found for context');
+      }
+    } catch (dbError) {
+      logger.warn('Failed to fetch catalog context:', dbError.message);
+    }
+    
+    // Build the user prompt with catalog context
     let userPrompt = `Item: ${itemName}`;
     if (category) {
       userPrompt += `\nCategory: ${category}`;
     }
+    userPrompt += catalogContext;
     
     // Get system prompt
     const systemPrompt = getCartPricingPrompt();
@@ -57,11 +89,17 @@ async function suggestPriceAndQuantity(itemName, category = null) {
       }
     );
     
+    // Log raw response for debugging
+    logger.info(`[LLM Raw Response] for ${itemName}:`, {
+      responseLength: response.length,
+      responsePreview: response.substring(0, 200)
+    });
+    
     // Parse JSON response
     const parsed = parseCartPricingResponse(response);
     
     if (!parsed) {
-      logger.warn(`Failed to parse LLM response for ${itemName}, using fallback`);
+      logger.warn(`Failed to parse LLM response for ${itemName}, using fallback. Raw response:`, response);
       return getFallbackPricing(itemName, category);
     }
     
@@ -69,8 +107,9 @@ async function suggestPriceAndQuantity(itemName, category = null) {
       quantity: parsed.suggested_quantity,
       unit: parsed.unit,
       category: parsed.category,
+      price: parsed.estimated_price_per_unit,
       confidence: parsed.confidence,
-      note: 'Price will be fetched from catalog, not used from LLM'
+      reasoning: parsed.reasoning
     });
     
     return {
@@ -127,11 +166,8 @@ function parseCartPricingResponse(response) {
       return null;
     }
     
-    // Validate category is uppercase
-    if (parsed.category !== parsed.category.toUpperCase()) {
-      logger.warn('Category not uppercase, normalizing:', parsed.category);
-      parsed.category = parsed.category.toUpperCase();
-    }
+    // Normalize category to lowercase (to match catalog format)
+    parsed.category = parsed.category.toLowerCase();
     
     // Validate ranges
     if (
@@ -301,7 +337,9 @@ function getFallbackPricing(itemName, category = null) {
   
   // Pantry staples
   else if (cat === 'PANTRY' || normalizedName.includes('pasta') || normalizedName.includes('rice') ||
-           normalizedName.includes('beans') || normalizedName.includes('cereal')) {
+           normalizedName.includes('beans') || normalizedName.includes('chickpea') || 
+           normalizedName.includes('cereal') || normalizedName.includes('ketchup') || 
+           normalizedName.includes('sauce')) {
     cat = 'PANTRY';
     if (normalizedName.includes('pasta') || normalizedName.includes('spaghetti')) {
       quantity = 1;
@@ -311,7 +349,18 @@ function getFallbackPricing(itemName, category = null) {
       quantity = 2;
       unit = 'pound';
       pricePerUnit = 1.49;
+    } else if (normalizedName.includes('chickpea') || normalizedName.includes('garbanzo')) {
+      quantity = 1;
+      unit = 'can';
+      pricePerUnit = 1.49;
     } else if (normalizedName.includes('beans') || normalizedName.includes('can')) {
+      quantity = 1;
+      unit = 'can';
+      pricePerUnit = 1.29;
+    } else if (normalizedName.includes('ketchup')) {
+      quantity = 1;
+      unit = 'bottle';
+      pricePerUnit = 3.49;
       quantity = 1;
       unit = 'can';
       pricePerUnit = 1.29;

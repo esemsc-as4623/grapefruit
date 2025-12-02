@@ -434,8 +434,8 @@ const CartReview = () => {
                             {item.category || 'Uncategorized'}
                           </span>
                           
-                          {/* Brand - Show in gray if not Generic */}
-                          {item.brand && item.brand !== 'Generic' && (
+                          {/* Brand - Show in gray if not Generic or AI Estimated */}
+                          {item.brand && item.brand !== 'Generic' && item.brand !== 'AI Estimated' && (
                             <span className="text-xs text-gray-600">
                               {item.brand}
                             </span>

@@ -726,32 +726,52 @@ router.post('/cart', async (req, res, next) => {
     let llmSuggestion = null;
     
     // STEP 1: Get LLM suggestions for quantity, unit, category, and price
-    if (useLLMPricing && (!value.quantity || !value.unit || !value.category)) {
+    // Call LLM if enabled and ANY field is missing
+    const needsLLM = useLLMPricing && (!value.quantity || !value.unit || !value.category);
+    
+    if (needsLLM) {
       try {
-        logger.info(`[LLM] Getting suggestion for: ${value.item_name}`);
+        logger.info(`[LLM] Getting suggestion for: ${value.item_name}`, {
+          missingFields: {
+            quantity: !value.quantity,
+            unit: !value.unit,
+            category: !value.category
+          }
+        });
+        
         llmSuggestion = await suggestPriceAndQuantity(value.item_name, value.category);
+        
+        // Log raw LLM response for debugging
+        logger.info(`[LLM] Raw suggestion received:`, {
+          suggested_quantity: llmSuggestion.suggested_quantity,
+          unit: llmSuggestion.unit,
+          category: llmSuggestion.category,
+          estimated_price_per_unit: llmSuggestion.estimated_price_per_unit,
+          confidence: llmSuggestion.confidence,
+        });
         
         // Use LLM suggestions for missing fields
         if (!value.quantity) {
           itemData.quantity = llmSuggestion.suggested_quantity;
+          logger.info(`[LLM] Setting quantity: ${itemData.quantity}`);
         }
         if (!value.unit) {
           itemData.unit = llmSuggestion.unit;
+          logger.info(`[LLM] Setting unit: ${itemData.unit}`);
         }
         if (!value.category && llmSuggestion.category) {
           itemData.category = llmSuggestion.category;
+          logger.info(`[LLM] Setting category: ${itemData.category}`);
         }
         
-        logger.info(`[LLM] Applied suggestions for ${value.item_name}:`, {
+        logger.info(`[LLM] Final itemData after applying suggestions:`, {
           quantity: itemData.quantity,
           unit: itemData.unit,
           category: itemData.category,
-          estimatedPrice: llmSuggestion.estimated_price_per_unit,
-          confidence: llmSuggestion.confidence,
         });
       } catch (llmError) {
         // If LLM fails, require user to provide values
-        logger.warn(`[LLM] Failed for ${value.item_name}, using provided values:`, llmError.message);
+        logger.error(`[LLM] Failed for ${value.item_name}:`, llmError);
         
         if (!value.quantity || !value.unit) {
           return res.status(400).json({ 
@@ -762,6 +782,13 @@ router.post('/cart', async (req, res, next) => {
           });
         }
       }
+    } else {
+      logger.info(`[LLM] Skipping LLM call for ${value.item_name}`, {
+        useLLMPricing,
+        hasQuantity: !!value.quantity,
+        hasUnit: !!value.unit,
+        hasCategory: !!value.category
+      });
     }
     
     // STEP 2: Fetch price from amazon_catalog

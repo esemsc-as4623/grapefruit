@@ -194,7 +194,7 @@ INSERT INTO amazon_catalog (id, item_name, category, price, unit, brand, in_stoc
 (gen_random_uuid(), 'Canola Oil', 'pantry', 5.99, 'bottle', 'Crisco', true),
 (gen_random_uuid(), 'Coconut Oil', 'pantry', 9.99, 'jar', 'Viva Naturals', true),
 (gen_random_uuid(), 'Balsamic Vinegar', 'pantry', 8.99, 'bottle', 'Modena', true),
-(gen_random_uuid(), 'White Vinegar', 'pantry', 2.99, 'bottle', 'Heinz', true),
+(gen_random_uuid(), 'White Wine Vinegar', 'pantry', 2.99, 'bottle', 'Aspall', true),
 (gen_random_uuid(), 'Apple Cider Vinegar', 'pantry', 4.99, 'bottle', 'Bragg', true),
 (gen_random_uuid(), 'Rice Vinegar', 'pantry', 3.99, 'bottle', 'Marukan', true),
 
