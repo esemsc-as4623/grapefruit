@@ -5,6 +5,7 @@ const logger = require('../utils/logger');
 const consumptionLearner = require('../services/consumptionLearner');
 const { suggestPriceAndQuantity } = require('../services/cartPricer');
 const priceService = require('../services/priceService');
+const { logAudit } = require('../services/auditLogger');
 
 const router = express.Router();
 
@@ -920,6 +921,7 @@ router.post('/cart', async (req, res, next) => {
     }
 
     // STEP 4: Create cart item with final price
+    const startTime = Date.now();
     const item = await Cart.addItem({
       ...itemData,
       estimated_price: finalPrice,
@@ -937,6 +939,25 @@ router.post('/cart', async (req, res, next) => {
     };
 
     logger.info(`[Cart] Item added: ${item.id} - ${item.item_name} (${itemData.quantity} ${itemData.unit} @ $${finalPrice})`);
+    
+    // Log audit event
+    await logAudit({
+      userId,
+      action: 'cart_add_item',
+      resourceType: 'cart',
+      resourceId: item.id,
+      status: 'success',
+      metadata: {
+        itemName: item.item_name,
+        quantity: item.quantity,
+        unit: item.unit,
+        price: finalPrice,
+        priceSource,
+      },
+      request: req,
+      executionTimeMs: Date.now() - startTime,
+    });
+    
     res.status(201).json(enrichedItem);
   } catch (error) {
     next(error);

@@ -8,6 +8,7 @@ const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
 const { parseReceipt, extractMetadata } = require('../services/receiptParser');
 const { matchItems, applyToInventory } = require('../services/inventoryMatcher');
+const { logAudit } = require('../services/auditLogger');
 const logger = require('../utils/logger');
 
 const router = express.Router();
@@ -79,6 +80,9 @@ const upload = multer({
  * Response: { receipt_id, raw_text, metadata }
  */
 router.post('/upload', upload.single('receipt'), async (req, res, next) => {
+  const startTime = Date.now();
+  let receiptId;
+  
   try {
     let receiptText = '';
     const userId = req.body.userId || req.body.user_id || req.query.user_id;
@@ -132,7 +136,7 @@ router.post('/upload', upload.single('receipt'), async (req, res, next) => {
     }
     
     // Generate receipt ID
-    const receiptId = uuidv4();
+    receiptId = uuidv4();
     
     // Extract metadata
     const metadata = extractMetadata(receiptText);
@@ -165,6 +169,22 @@ router.post('/upload', upload.single('receipt'), async (req, res, next) => {
       vendor: metadata.vendor,
     });
     
+    // Log audit event
+    await logAudit({
+      userId,
+      action: 'receipt_upload',
+      resourceType: 'receipt',
+      resourceId: receiptId,
+      status: 'success',
+      metadata: {
+        textLength: receiptText.length,
+        vendor: metadata.vendor,
+        fileType: req.file?.mimetype || 'text',
+      },
+      request: req,
+      executionTimeMs: Date.now() - startTime,
+    });
+    
     res.status(201).json({
       receiptId: receiptId,
       status: 'uploaded',
@@ -174,6 +194,20 @@ router.post('/upload', upload.single('receipt'), async (req, res, next) => {
     });
     
   } catch (error) {
+    // Log failed audit event
+    if (receiptId) {
+      await logAudit({
+        userId: req.body.userId || req.body.user_id || req.query.user_id || 'unknown',
+        action: 'receipt_upload',
+        resourceType: 'receipt',
+        resourceId: receiptId,
+        status: 'failure',
+        metadata: {},
+        request: req,
+        error,
+        executionTimeMs: Date.now() - startTime,
+      });
+    }
     next(error);
   }
 });
@@ -388,6 +422,7 @@ router.post('/:id/apply', validateUUID, async (req, res, next) => {
     }
     
     logger.info(`Applying receipt ${id} to inventory`);
+    const startTime = Date.now();
     
     // Apply to inventory
     const applyResults = await applyToInventory(matchResults, receipt.user_id);
@@ -397,6 +432,22 @@ router.post('/:id/apply', validateUUID, async (req, res, next) => {
     receipt.applied_at = new Date().toISOString();
     receipt.apply_results = applyResults;
     receiptStore.set(id, receipt);
+    
+    // Log audit event
+    await logAudit({
+      userId: receipt.user_id,
+      action: 'receipt_apply',
+      resourceType: 'receipt',
+      resourceId: id,
+      status: 'success',
+      metadata: {
+        itemsUpdated: applyResults.updated.length,
+        itemsCreated: applyResults.created.length,
+        errors: applyResults.errors.length,
+      },
+      request: req,
+      executionTimeMs: Date.now() - startTime,
+    });
     
     res.json({
       receiptId: id,

@@ -1,5 +1,7 @@
 const db = require('../config/database');
 const logger = require('../utils/logger');
+const { withTransaction } = require('../utils/transaction');
+
 
 /**
  * Inventory Model
@@ -289,6 +291,62 @@ class Inventory {
       logger.error('Error adding quantity to inventory item:', error);
       throw error;
     }
+  }
+
+  /**
+   * Bulk update inventory from receipt items (transactional)
+   * Ensures all items are updated together or none are updated
+   * @param {string} userId - User ID
+   * @param {Array} items - Array of {itemName, quantity, unit, category}
+   * @returns {Promise<Array>} - Array of updated/created inventory items
+   */
+  static async bulkUpdateFromReceipt(userId, items) {
+    return withTransaction(async (client) => {
+      const results = [];
+
+      for (const item of items) {
+        // Check if item exists
+        const existing = await client.query(
+          'SELECT * FROM inventory WHERE user_id = $1 AND LOWER(item_name) = LOWER($2) AND unit = $3',
+          [userId, item.itemName, item.unit]
+        );
+
+        if (existing.rows.length > 0) {
+          // Update existing item
+          const current = existing.rows[0];
+          const newQuantity = parseFloat(current.quantity) + parseFloat(item.quantity);
+
+          const updated = await client.query(
+            `UPDATE inventory 
+             SET quantity = $1,
+                 last_purchase_date = CURRENT_TIMESTAMP,
+                 last_purchase_quantity = $2,
+                 last_updated = CURRENT_TIMESTAMP
+             WHERE id = $3
+             RETURNING *`,
+            [newQuantity, item.quantity, current.id]
+          );
+          results.push(updated.rows[0]);
+        } else {
+          // Create new item
+          const created = await client.query(
+            `INSERT INTO inventory (user_id, item_name, quantity, unit, category)
+             VALUES ($1, $2, $3, $4, $5)
+             RETURNING *`,
+            [userId, item.itemName, item.quantity, item.unit, item.category || 'others']
+          );
+          results.push(created.rows[0]);
+        }
+      }
+
+      logger.info('Bulk inventory update completed', {
+        userId,
+        itemCount: items.length,
+        resultsCount: results.length,
+      });
+
+      return results;
+    });
   }
 }
 

@@ -6,7 +6,15 @@
 ![Tests](https://img.shields.io/badge/tests-passing-success)
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue)
 
-## 🚀 Quick Start
+## � Table of Contents
+
+- [Quick Start](#-quick-start)
+- [Production Deployment](#-production-deployment)
+- [Current Status](#-current-status)
+- [Architecture](#-architecture)
+- [API Documentation](#-api-documentation)
+
+## �🚀 Quick Start
 
 ```bash
 # Clone repository
@@ -54,6 +62,41 @@ docker exec -it grapefruit-db psql -U grapefruit -d grapefruit -c "\dt"
 docker exec -it grapefruit-db psql -U grapefruit -d grapefruit -c "SELECT COUNT(*) FROM inventory;"
 # Should return 15 items
 ```
+
+## 🏭 Production Deployment
+
+**New!** Production-ready with Docker multi-stage builds, database migrations, audit logging, and LLM caching.
+
+### Quick Production Deploy
+
+```bash
+# 1. Configure environment
+cp .env.production.example .env
+# Edit .env with your production settings
+
+# 2. Deploy
+docker compose -f docker-compose.prod.yml up -d --build
+
+# 3. Verify
+curl http://localhost:5000/health
+docker compose -f docker-compose.prod.yml logs | grep migration
+```
+
+### Production Features
+
+- ✅ **Multi-stage Docker builds** - Optimized images with production dependencies only
+- ✅ **Application-level migrations** - No race conditions, runs on startup
+- ✅ **Audit logging** - Complete trail of all user actions
+- ✅ **LLM response caching** - Reduces API costs by ~80%
+- ✅ **Transaction support** - Atomic multi-step operations
+- ✅ **Improved healthchecks** - Proper startup delays and retries
+- ✅ **Graceful shutdown** - Clean database closure
+- ✅ **Resource limits** - CPU and memory constraints
+- ✅ **Security hardening** - Non-root users, no dev mounts
+
+**📖 Full documentation**: See [`PRODUCTION.md`](./PRODUCTION.md) for detailed deployment guide.
+
+**📝 Changes summary**: See [`CHANGES.md`](./CHANGES.md) for complete list of improvements.
 
 ### Database Management
 

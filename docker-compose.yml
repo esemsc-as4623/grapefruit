@@ -34,6 +34,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      target: production
     container_name: grapefruit-backend
     restart: unless-stopped
     environment:
@@ -52,18 +53,20 @@ services:
       ASI_BASE_URL: ${ASI_BASE_URL:-https://inference.asicloud.cudos.org/v1}
       ASI_MODEL: ${ASI_MODEL:-asi1-mini}
       LLM_DEBUG: ${LLM_DEBUG:-false}
+      LLM_CACHE_ENABLED: ${LLM_CACHE_ENABLED:-true}
     ports:
       - "${BACKEND_PORT:-5000}:5000"
     depends_on:
       postgres:
         condition: service_healthy
     volumes:
-      - ./backend/src:/app/src
+      # Only mount logs directory for production
       - ./backend/logs:/app/logs
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:5000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 30s
       timeout: 10s
+      start_period: 40s
       retries: 3
     networks:
       - grapefruit-network
@@ -73,6 +76,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      target: development
     container_name: grapefruit-frontend
     restart: unless-stopped
     environment:
@@ -81,10 +85,8 @@ services:
     ports:
       - "3000:3000"
     depends_on:
-      - backend
-    volumes:
-      - ./frontend/src:/app/src
-      - ./frontend/public:/app/public
+      backend:
+        condition: service_healthy
     networks:
       - grapefruit-network
 

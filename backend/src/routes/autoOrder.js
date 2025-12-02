@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../config/database');
 const logger = require('../utils/logger');
 const autoOrderScheduler = require('../services/autoOrderScheduler');
+const { logAudit } = require('../services/auditLogger');
 
 const router = express.Router();
 
