@@ -138,6 +138,65 @@ async function runMigrations() {
   }
 }
 
+/**
+ * Get migration status for health checks
+ */
+async function getMigrationStatus() {
+  try {
+    // Check if migrations table exists
+    const tableCheck = await db.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = 'schema_migrations'
+      );
+    `);
+
+    if (!tableCheck.rows[0].exists) {
+      return {
+        status: 'not_initialized',
+        appliedCount: 0,
+        pendingCount: 0,
+        lastMigration: null,
+      };
+    }
+
+    // Get applied migrations
+    const appliedResult = await db.query(`
+      SELECT 
+        COUNT(*) as count,
+        MAX(applied_at) as last_applied,
+        MAX(migration_name) as last_migration
+      FROM schema_migrations
+    `);
+
+    // Get all migration files
+    const migrationsDir = __dirname;
+    const files = await fs.readdir(migrationsDir);
+    const totalMigrations = files.filter(f => f.endsWith('.sql')).length;
+
+    const appliedCount = parseInt(appliedResult.rows[0].count);
+    const pendingCount = totalMigrations - appliedCount;
+
+    return {
+      status: pendingCount > 0 ? 'pending' : 'up_to_date',
+      appliedCount,
+      pendingCount,
+      totalCount: totalMigrations,
+      lastMigration: appliedResult.rows[0].last_migration,
+      lastApplied: appliedResult.rows[0].last_applied,
+    };
+  } catch (error) {
+    logger.error('Failed to get migration status:', error);
+    return {
+      status: 'error',
+      error: error.message,
+    };
+  }
+}
+
 module.exports = {
   runMigrations,
+  getMigrationStatus,
+  getAppliedMigrations,
 };

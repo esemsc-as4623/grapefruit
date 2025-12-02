@@ -6,7 +6,7 @@
 ![Tests](https://img.shields.io/badge/tests-passing-success)
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue)
 
-## � Table of Contents
+## Table of Contents
 
 - [Quick Start](#-quick-start)
 - [Production Deployment](#-production-deployment)
@@ -14,7 +14,7 @@
 - [Architecture](#-architecture)
 - [API Documentation](#-api-documentation)
 
-## �🚀 Quick Start
+## Quick Start
 
 ```bash
 # Clone repository
@@ -86,17 +86,22 @@ docker compose -f docker-compose.prod.yml logs | grep migration
 
 - ✅ **Multi-stage Docker builds** - Optimized images with production dependencies only
 - ✅ **Application-level migrations** - No race conditions, runs on startup
-- ✅ **Audit logging** - Complete trail of all user actions
+- ✅ **Audit logging** - Complete trail of all user actions with queryable API
 - ✅ **LLM response caching** - Reduces API costs by ~80%
 - ✅ **Transaction support** - Atomic multi-step operations
+- ✅ **Rate limiting** - Protects API from abuse (100 req/15min general, 10 req/15min for LLM)
+- ✅ **SSL/TLS support** - HTTPS encryption for production deployments
+- ✅ **Request/response logging** - Comprehensive HTTP logging with sensitive data redaction
+- ✅ **Enhanced health checks** - Migration status, database health, and system metrics
 - ✅ **Improved healthchecks** - Proper startup delays and retries
 - ✅ **Graceful shutdown** - Clean database closure
 - ✅ **Resource limits** - CPU and memory constraints
 - ✅ **Security hardening** - Non-root users, no dev mounts
 
-**📖 Full documentation**: See [`PRODUCTION.md`](./PRODUCTION.md) for detailed deployment guide.
+**📖 Full documentation**: 
+- [`PRODUCTION.md`](./PRODUCTION.md) - Detailed deployment guide
+- [`SECURITY_MONITORING.md`](./SECURITY_MONITORING.md) - Security features and monitoring
 
-**📝 Changes summary**: See [`CHANGES.md`](./CHANGES.md) for complete list of improvements.
 
 ### Database Management
 
