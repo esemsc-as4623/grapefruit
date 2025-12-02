@@ -105,6 +105,13 @@ router.post('/day', async (req, res, next) => {
       WHERE user_id = $1
     `, [userId]);
     
+    await db.query(`
+      UPDATE consumption_history
+      SET 
+        timestamp = timestamp - INTERVAL '1 day'
+      WHERE user_id = $1
+    `, [userId]);
+    
     logger.info('Advanced time by 1 day for all records');
     
     // Get all inventory items
@@ -176,8 +183,8 @@ router.post('/day', async (req, res, next) => {
       
       // If quantity reaches 0 or goes below 0, delete and optionally add to cart
       if (newQuantity <= 0) {
-        if (Math.random() < 0.5) {
-          // 50% chance: Add to cart before deleting
+        if (Math.random() < 0.3) {
+          // 30% chance: Add to cart before deleting
           await Cart.addItem({
             user_id: userId,
             item_name: item.item_name,
@@ -217,9 +224,9 @@ router.post('/day', async (req, res, next) => {
     
     // For items WITHOUT consumption rates, apply consistent consumption pattern
     if (itemsWithoutConsumption.length > 0) {
-      // Calculate consistent consumption target: 5-8 items per day (or 30-50% of these items if smaller)
-      const minConsumption = Math.min(5, Math.ceil(itemsWithoutConsumption.length * 0.3));
-      const maxConsumption = Math.min(8, Math.ceil(itemsWithoutConsumption.length * 0.5));
+      // Calculate consistent consumption target: 2-5 items per day (or 20-30% of these items if smaller)
+      const minConsumption = Math.min(2, Math.ceil(itemsWithoutConsumption.length * 0.2));
+      const maxConsumption = Math.min(5, Math.ceil(itemsWithoutConsumption.length * 0.3));
       const targetConsumption = Math.floor(Math.random() * (maxConsumption - minConsumption + 1)) + minConsumption;
       
       // Shuffle items to randomize which ones are consumed
@@ -229,8 +236,8 @@ router.post('/day', async (req, res, next) => {
       for (let i = 0; i < Math.min(targetConsumption, shuffledItems.length); i++) {
         const item = shuffledItems[i];
         
-        // 80% chance of depletion, 20% chance of deletion (disposal)
-        const shouldDelete = Math.random() < 0.2;
+        // 90% chance of depletion, 10% chance of deletion (disposal)
+        const shouldDelete = Math.random() < 0.1;
         
         if (shouldDelete) {
           // Delete item (user disposed of it)
@@ -312,11 +319,11 @@ router.post('/day', async (req, res, next) => {
         } else if (daysUntilRunout <= 3) {
           depletionScore = 0.8; // 80% chance if running out in 3 days
         } else if (daysUntilRunout <= 7) {
-          depletionScore = 0.5; // 50% chance if running out in a week
+          depletionScore = 0.4; // 40% chance if running out in a week
         } else if (daysUntilRunout <= 14) {
-          depletionScore = 0.2; // 20% chance if running out in 2 weeks
+          depletionScore = 0.1; // 10% chance if running out in 2 weeks
         } else {
-          depletionScore = 0.05; // 5% chance otherwise
+          depletionScore = 0.01; // 1% chance otherwise
         }
       } else {
         // No predicted runout - use quantity-based heuristic

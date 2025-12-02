@@ -48,33 +48,39 @@ INSERT INTO preferences (user_id, max_spend, approval_mode, auto_approve_limit, 
 -- ============================================
 -- SEED INVENTORY DATA
 -- ============================================
--- Inventory items added across the last week to demonstrate different creation dates
--- Items are spread across 7 days, with varying consumption rates and predicted runouts
+-- Starting inventory with varying amounts
+-- No consumption rates specified (all NULL) - will be learned from usage
+-- Items spread across different categories
 
--- Items added 7 days ago
+-- BAKERY/BREAD
 INSERT INTO inventory (item_name, quantity, unit, category, predicted_runout, average_daily_consumption, last_purchase_date, last_purchase_quantity, created_at, last_updated) VALUES
-('Whole Milk', 2.0, 'liter', 'dairy', CURRENT_TIMESTAMP + INTERVAL '8 days', 0.25, CURRENT_TIMESTAMP - INTERVAL '7 days', 2.0, CURRENT_TIMESTAMP - INTERVAL '7 days', CURRENT_TIMESTAMP - INTERVAL '7 days'),
-('Thai Jasmine Rice', 5.0, 'pound', 'pantry', NULL, NULL, CURRENT_TIMESTAMP - INTERVAL '7 days', 5.0, CURRENT_TIMESTAMP - INTERVAL '7 days', CURRENT_TIMESTAMP - INTERVAL '7 days');
+('Bread', 1.5, 'loaf', 'bakery', NULL, NULL, CURRENT_TIMESTAMP - INTERVAL '1 day', 2.0, CURRENT_TIMESTAMP - INTERVAL '1 day', CURRENT_TIMESTAMP - INTERVAL '1 day');
 
--- Items added 5 days ago
+-- DAIRY
 INSERT INTO inventory (item_name, quantity, unit, category, predicted_runout, average_daily_consumption, last_purchase_date, last_purchase_quantity, created_at, last_updated) VALUES
-('Mayo', 12.4, 'ounce', 'pantry', NULL, NULL, CURRENT_TIMESTAMP - INTERVAL '5 days', 12.4, CURRENT_TIMESTAMP - INTERVAL '5 days', CURRENT_TIMESTAMP - INTERVAL '5 days'),
-('Soy Sauce', 4.1, 'ounce', 'pantry', NULL, NULL, CURRENT_TIMESTAMP - INTERVAL '5 days', 4.1, CURRENT_TIMESTAMP - INTERVAL '5 days', CURRENT_TIMESTAMP - INTERVAL '5 days');
+('Eggs', 8.0, 'count', 'dairy', NULL, NULL, CURRENT_TIMESTAMP - INTERVAL '2 days', 12.0, CURRENT_TIMESTAMP - INTERVAL '2 days', CURRENT_TIMESTAMP - INTERVAL '2 days'),
+('Milk', 0.75, 'gallon', 'dairy', NULL, NULL, CURRENT_TIMESTAMP - INTERVAL '3 days', 1.0, CURRENT_TIMESTAMP - INTERVAL '3 days', CURRENT_TIMESTAMP - INTERVAL '3 days'),
+('Butter', 12.0, 'ounce', 'dairy', NULL, NULL, CURRENT_TIMESTAMP - INTERVAL '1 week', 16.0, CURRENT_TIMESTAMP - INTERVAL '1 week', CURRENT_TIMESTAMP - INTERVAL '1 week');
 
--- Items added 3 days ago
+-- PRODUCE
 INSERT INTO inventory (item_name, quantity, unit, category, predicted_runout, average_daily_consumption, last_purchase_date, last_purchase_quantity, created_at, last_updated) VALUES
-('Japanese Sweet Potatoes', 2.3, 'pound', 'produce', NULL, NULL, CURRENT_TIMESTAMP - INTERVAL '3 days', 2.3, CURRENT_TIMESTAMP - INTERVAL '3 days', CURRENT_TIMESTAMP - INTERVAL '3 days'),
-('Tofu', 14.0, 'ounce', 'other', NULL, NULL, CURRENT_TIMESTAMP - INTERVAL '3 days', 14.0, CURRENT_TIMESTAMP - INTERVAL '3 days', CURRENT_TIMESTAMP - INTERVAL '3 days');
+('Peppers', 3.0, 'count', 'produce', NULL, NULL, CURRENT_TIMESTAMP - INTERVAL '2 days', 4.0, CURRENT_TIMESTAMP - INTERVAL '2 days', CURRENT_TIMESTAMP - INTERVAL '2 days'),
+('Lemon', 2.0, 'count', 'produce', NULL, NULL, CURRENT_TIMESTAMP - INTERVAL '4 days', 3.0, CURRENT_TIMESTAMP - INTERVAL '4 days', CURRENT_TIMESTAMP - INTERVAL '4 days'),
+('Onion', 1.2, 'pound', 'produce', NULL, NULL, CURRENT_TIMESTAMP - INTERVAL '5 days', 2.0, CURRENT_TIMESTAMP - INTERVAL '5 days', CURRENT_TIMESTAMP - INTERVAL '5 days'),
+('Garlic', 6.0, 'clove', 'produce', NULL, NULL, CURRENT_TIMESTAMP - INTERVAL '1 week', 10.0, CURRENT_TIMESTAMP - INTERVAL '1 week', CURRENT_TIMESTAMP - INTERVAL '1 week'),
+('Ginger', 4.5, 'ounce', 'produce', NULL, NULL, CURRENT_TIMESTAMP - INTERVAL '6 days', 6.0, CURRENT_TIMESTAMP - INTERVAL '6 days', CURRENT_TIMESTAMP - INTERVAL '6 days'),
+('Tomatoes', 1.5, 'pound', 'produce', NULL, NULL, CURRENT_TIMESTAMP - INTERVAL '3 days', 2.0, CURRENT_TIMESTAMP - INTERVAL '3 days', CURRENT_TIMESTAMP - INTERVAL '3 days'),
+('Grapes', 1.0, 'pound', 'produce', NULL, NULL, CURRENT_TIMESTAMP - INTERVAL '2 days', 1.5, CURRENT_TIMESTAMP - INTERVAL '2 days', CURRENT_TIMESTAMP - INTERVAL '2 days');
 
--- Items added 2 days ago
+-- PANTRY
 INSERT INTO inventory (item_name, quantity, unit, category, predicted_runout, average_daily_consumption, last_purchase_date, last_purchase_quantity, created_at, last_updated) VALUES
-('Mandu Dumplings', 16.0, 'ounce', 'other', NULL, NULL, CURRENT_TIMESTAMP - INTERVAL '2 days', 16.0, CURRENT_TIMESTAMP - INTERVAL '2 days', CURRENT_TIMESTAMP - INTERVAL '2 days'),
-('Nori Seaweed', 3.0, 'count', 'other', NULL, NULL, CURRENT_TIMESTAMP - INTERVAL '2 days', 3.0, CURRENT_TIMESTAMP - INTERVAL '2 days', CURRENT_TIMESTAMP - INTERVAL '2 days');
+('White Wine Vinegar', 18.0, 'ounce', 'pantry', NULL, NULL, CURRENT_TIMESTAMP - INTERVAL '2 weeks', 24.0, CURRENT_TIMESTAMP - INTERVAL '2 weeks', CURRENT_TIMESTAMP - INTERVAL '2 weeks'),
+('Pasta', 2.5, 'pound', 'pantry', NULL, NULL, CURRENT_TIMESTAMP - INTERVAL '1 week', 3.0, CURRENT_TIMESTAMP - INTERVAL '1 week', CURRENT_TIMESTAMP - INTERVAL '1 week');
 
--- Items added today (within last 24 hours) - these will have green background
+-- MEAT
 INSERT INTO inventory (item_name, quantity, unit, category, predicted_runout, average_daily_consumption, last_purchase_date, last_purchase_quantity, created_at, last_updated) VALUES
-('Baguette', 1.0, 'count', 'pantry', CURRENT_TIMESTAMP + INTERVAL '1 day', 1.0, CURRENT_TIMESTAMP - INTERVAL '2 hours', 1.0, CURRENT_TIMESTAMP - INTERVAL '2 hours', CURRENT_TIMESTAMP - INTERVAL '2 hours'),
-('Ground Coffee', 0.14, 'lb', 'beverages', CURRENT_TIMESTAMP + INTERVAL '2 days', 0.07, CURRENT_TIMESTAMP - INTERVAL '5 hours', 0.5, CURRENT_TIMESTAMP - INTERVAL '5 hours', CURRENT_TIMESTAMP - INTERVAL '5 hours');
+('Chicken Breast', 1.75, 'pound', 'meat', NULL, NULL, CURRENT_TIMESTAMP - INTERVAL '1 day', 2.0, CURRENT_TIMESTAMP - INTERVAL '1 day', CURRENT_TIMESTAMP - INTERVAL '1 day'),
+('Salmon', 1.25, 'pound', 'meat', NULL, NULL, CURRENT_TIMESTAMP - INTERVAL '2 days', 1.5, CURRENT_TIMESTAMP - INTERVAL '2 days', CURRENT_TIMESTAMP - INTERVAL '2 days');
 
 -- ============================================
 -- VERIFICATION QUERIES
@@ -100,6 +106,6 @@ BEGIN
     RAISE NOTICE 'Max spend: $250.00';
     RAISE NOTICE 'Approval mode: auto_under_limit ($100)';
     RAISE NOTICE '===========================================';
-    RAISE NOTICE 'Ready to test adding new inventory items!';
+    RAISE NOTICE 'Ready to demo!';
     RAISE NOTICE '===========================================';
 END $$;

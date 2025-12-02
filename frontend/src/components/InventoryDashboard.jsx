@@ -443,8 +443,15 @@ const InventoryDashboard = () => {
             const hoursSinceCreation = (now - createdDate) / (1000 * 60 * 60);
             const isNewlyAdded = hoursSinceCreation <= 24;
             
+            // Calculate days since item was added
+            const daysSinceCreation = (now - createdDate) / (1000 * 60 * 60 * 24);
+            const hasEnoughHistory = daysSinceCreation >= 2;
+            
             // Determine background color
             const backgroundColor = isNewlyAdded ? 'bg-green-50' : 'bg-white';
+            
+            // Only show "runs out in" if days until runout is 3 or less
+            const showRunsOutIn = hasConsumption && daysUntilRunout >= 0 && daysUntilRunout <= 3;
             
             return (
               <div
@@ -589,14 +596,14 @@ const InventoryDashboard = () => {
                 </div>
 
                 {/* Consumption rate */}
-                {item.average_daily_consumption > 0 && (
+                {hasEnoughHistory && item.average_daily_consumption > 0 && (
                   <p className="text-xs text-gray-500 mb-2">
                     Consumes ~{parseFloat(item.average_daily_consumption).toFixed(2)} {item.unit}/day
                   </p>
                 )}
 
-                {/* Predicted Runout - only show if there's a consumption rate */}
-                {hasConsumption && (
+                {/* Predicted Runout - only show if there's a consumption rate and runs out in 3 days or fewer */}
+                {showRunsOutIn && (
                   <div className={`flex items-center gap-2 px-3 py-2 rounded-lg ${statusColor} mb-2`}>
                     <Calendar className="w-4 h-4" />
                     <div className="flex-1">

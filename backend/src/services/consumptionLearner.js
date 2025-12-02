@@ -9,10 +9,10 @@
  * - Time-based tracking: Records time elapsed between events
  * 
  * Algorithm Selection:
- * - < 2 days of data: Use category estimate (insufficient data)
+ * - < 2 days of data: Insufficient data, no prediction available
  * - 2 days to 1 week: Simple Moving Average
- * - 1 week to 2 weeks: Exponential Weighted Moving Average (EWMA)
- * - >= 2 weeks: Linear Regression with temporal features
+ * - > 1 week: Exponential Weighted Moving Average (EWMA)
+ * Alternative: Linear Regression with temporal features
  * 
  * @module services/consumptionLearner
  */
@@ -176,7 +176,7 @@ function calculateSimpleMovingAverage(events) {
  * @param {number} alpha - Smoothing factor (0-1), higher = more weight to recent (default: 0.3)
  * @returns {number|null} - EWMA daily consumption rate
  */
-function calculateEWMA(events, alpha = 0.3) {
+function calculateEWMA(events, alpha = 0.5) {
   if (events.length === 0) {
     return null;
   }
@@ -353,11 +353,11 @@ async function learnConsumptionRate(userId, itemName, itemContext = {}) {
     const events = await getConsumptionHistory(userId, itemName);
 
     if (events.length === 0) {
-      logger.info(`No consumption history for ${itemName}, using category estimate`);
+      logger.info(`No consumption history for ${itemName}, no prediction available`);
       return {
-        rate: await estimateFromCategory(userId, itemContext.category),
-        algorithm: 'category_estimate',
-        confidence: 'low',
+        rate: null,
+        algorithm: 'no_data',
+        confidence: 'none',
         dataPoints: 0,
       };
     }
@@ -373,32 +373,27 @@ async function learnConsumptionRate(userId, itemName, itemContext = {}) {
 
     // Algorithm selection based on data availability
     if (totalDataDays < 2) {
-      // < 2 days: Not enough data, use category estimate
-      rate = await estimateFromCategory(userId, itemContext.category);
-      algorithm = 'insufficient_data_category_fallback';
-      confidence = 'very_low';
+      // < 2 days: Not enough data, return null to indicate no prediction available
+      rate = null;
+      algorithm = 'insufficient_data';
+      confidence = 'none';
     } else if (totalDataDays < 7) {
       // 2 days to 1 week: Simple Moving Average
       rate = calculateSimpleMovingAverage(events);
       algorithm = 'simple_moving_average';
       confidence = 'low';
-    } else if (totalDataDays < 14) {
-      // 1 week to 2 weeks: EWMA
+    } else {
+      // > 1 week: EWMA
       rate = calculateEWMA(events, 0.3);
       algorithm = 'ewma';
       confidence = 'medium';
-    } else {
-      // >= 2 weeks: Linear Regression
-      rate = calculateLinearRegression(events, itemContext);
-      algorithm = 'linear_regression';
-      confidence = 'high';
     }
 
-    if (rate === null || rate <= 0) {
-      // Fallback to category estimate
-      rate = await estimateFromCategory(userId, itemContext.category);
-      algorithm = `${algorithm}_fallback_category`;
-      confidence = 'low';
+    if (rate !== null && rate <= 0) {
+      // Invalid rate, set to null (don't use category fallback anymore)
+      rate = null;
+      algorithm = `${algorithm}_invalid_rate`;
+      confidence = 'none';
     }
 
     logger.info(
@@ -415,9 +410,9 @@ async function learnConsumptionRate(userId, itemName, itemContext = {}) {
   } catch (error) {
     logger.error(`Error learning consumption rate for ${itemName}:`, error);
     return {
-      rate: await estimateFromCategory(userId, itemContext.category),
-      algorithm: 'error_fallback',
-      confidence: 'very_low',
+      rate: null,
+      algorithm: 'error',
+      confidence: 'none',
       dataPoints: 0,
     };
   }
@@ -512,7 +507,28 @@ async function updateAllConsumptionRates(userId) {
         const currentRate = parseFloat(item.average_daily_consumption) || 0;
         const newRate = learningResult.rate;
 
-        if (Math.abs(newRate - currentRate) > 0.001) {
+        // If newRate is null (insufficient data)
+        if (newRate === null) {
+          // Check if there's any consumption history for this item
+          const hasHistory = learningResult.dataPoints > 0;
+          
+          // Only clear the rate if we have history but it's insufficient
+          // This preserves user-specified rates when there's no consumption history yet
+          if (hasHistory && (currentRate !== 0 || item.predicted_runout !== null)) {
+            await db.query(
+              `UPDATE inventory 
+               SET average_daily_consumption = NULL,
+                   predicted_runout = NULL,
+                   last_updated = CURRENT_TIMESTAMP
+               WHERE id = $1`,
+              [item.id]
+            );
+            stats.updated++;
+          } else if (!hasHistory && currentRate !== 0) {
+            // Preserve user-specified rate (no consumption history yet)
+            logger.info(`Preserving user-specified consumption rate for ${item.item_name}: ${currentRate}`);
+          }
+        } else if (Math.abs(newRate - currentRate) > 0.001) {
           // Update consumption rate
           await db.query(
             `UPDATE inventory 
