@@ -184,8 +184,10 @@ router.post('/day', async (req, res, next) => {
       
       // If quantity reaches 0 or goes below 0, delete and optionally add to cart
       if (newQuantity <= 0) {
-        if (Math.random() < 0.3) {
-          // 30% chance: Add to cart before deleting with LLM-suggested quantity
+        const shouldAddToCart = Math.random() < 0.3; // 30% chance
+        
+        if (shouldAddToCart) {
+          // Add to cart before deleting with LLM-suggested quantity
           try {
             const llmSuggestion = await suggestPriceAndQuantity(item.item_name, item.category);
             await Cart.addItem({

@@ -170,19 +170,6 @@ const CartReview = () => {
     }).format(amount);
   };
 
-  // Category icon
-  const getCategoryIcon = (category) => {
-    const icons = {
-      dairy: '🥛',
-      produce: '🥬',
-      meat: '🥩',
-      pantry: '🥫',
-      bread: '🍞',
-      others: '📦',
-    };
-    return icons[category?.toLowerCase()] || '📦';
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -253,12 +240,8 @@ const CartReview = () => {
                   <div className="flex items-center gap-4">
                     {/* Item Icon and Info */}
                     <div className="flex-1 flex items-center gap-3">
-                      <span className="text-3xl">{getCategoryIcon(item.category)}</span>
                       <div className="flex-1">
                         <h3 className="font-semibold text-gray-900">{item.item_name}</h3>
-                        <div className="flex items-center gap-3 text-sm text-gray-600 mt-1">
-                          <span className="capitalize">{item.category || 'Other'}</span>
-                        </div>
                       </div>
                     </div>
 
