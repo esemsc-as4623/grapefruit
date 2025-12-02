@@ -305,38 +305,21 @@ class Inventory {
       const results = [];
 
       for (const item of items) {
-        // Check if item exists (matching the unique_user_item constraint: user_id + item_name)
-        const existing = await client.query(
-          'SELECT * FROM inventory WHERE user_id = $1 AND LOWER(item_name) = LOWER($2)',
-          [userId, item.itemName]
+        // Use INSERT ... ON CONFLICT to handle race conditions
+        // This is safer than SELECT then INSERT/UPDATE
+        const result = await client.query(
+          `INSERT INTO inventory (user_id, item_name, quantity, unit, category, last_purchase_date, last_purchase_quantity)
+           VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, $3)
+           ON CONFLICT (user_id, item_name)
+           DO UPDATE SET
+             quantity = inventory.quantity + EXCLUDED.quantity,
+             last_purchase_date = CURRENT_TIMESTAMP,
+             last_purchase_quantity = EXCLUDED.last_purchase_quantity,
+             last_updated = CURRENT_TIMESTAMP
+           RETURNING *`,
+          [userId, item.itemName, item.quantity, item.unit, item.category || 'others']
         );
-
-        if (existing.rows.length > 0) {
-          // Update existing item
-          const current = existing.rows[0];
-          const newQuantity = parseFloat(current.quantity) + parseFloat(item.quantity);
-
-          const updated = await client.query(
-            `UPDATE inventory 
-             SET quantity = $1,
-                 last_purchase_date = CURRENT_TIMESTAMP,
-                 last_purchase_quantity = $2,
-                 last_updated = CURRENT_TIMESTAMP
-             WHERE id = $3
-             RETURNING *`,
-            [newQuantity, item.quantity, current.id]
-          );
-          results.push(updated.rows[0]);
-        } else {
-          // Create new item
-          const created = await client.query(
-            `INSERT INTO inventory (user_id, item_name, quantity, unit, category)
-             VALUES ($1, $2, $3, $4, $5)
-             RETURNING *`,
-            [userId, item.itemName, item.quantity, item.unit, item.category || 'others']
-          );
-          results.push(created.rows[0]);
-        }
+        results.push(result.rows[0]);
       }
 
       logger.info('Bulk inventory update completed', {

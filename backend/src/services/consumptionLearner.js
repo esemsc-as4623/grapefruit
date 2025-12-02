@@ -367,6 +367,17 @@ async function learnConsumptionRate(userId, itemName, itemContext = {}) {
     const lastEvent = new Date(events[events.length - 1].timestamp);
     const totalDataDays = (lastEvent - firstEvent) / (1000 * 60 * 60 * 24);
 
+    // Validate totalDataDays
+    if (totalDataDays === null || totalDataDays === undefined || isNaN(totalDataDays)) {
+      logger.warn(`Invalid totalDataDays for ${itemName}, returning no data`);
+      return {
+        rate: null,
+        algorithm: 'invalid_data',
+        confidence: 'none',
+        dataPoints: events.length,
+      };
+    }
+
     let rate;
     let algorithm;
     let confidence;

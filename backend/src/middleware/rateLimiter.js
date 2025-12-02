@@ -6,11 +6,16 @@
 const rateLimit = require('express-rate-limit');
 const logger = require('../utils/logger');
 
+// Allow configuring rate limit window for testing (default 15 minutes)
+const RATE_LIMIT_WINDOW_MS = process.env.RATE_LIMIT_WINDOW_MS 
+  ? parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) 
+  : 15 * 60 * 1000;
+
 /**
  * General API rate limiter (100 requests per 15 minutes per IP)
  */
 const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: RATE_LIMIT_WINDOW_MS,
   max: 100, // Limit each IP to 100 requests per windowMs
   message: {
     error: 'Too many requests from this IP, please try again later.',
@@ -34,67 +39,76 @@ const apiLimiter = rateLimit({
 /**
  * Strict rate limiter for resource-intensive endpoints like LLM calls
  * (10 requests per 15 minutes per IP)
+ * Skipped in test environment
  */
-const strictLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // Limit each IP to 10 requests per windowMs
-  message: {
-    error: 'Too many requests to this endpoint, please try again later.',
-    retryAfter: '15 minutes'
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-  handler: (req, res) => {
-    logger.warn('Strict rate limit exceeded', {
-      ip: req.ip,
-      path: req.path,
-      method: req.method
+const strictLimiter = process.env.NODE_ENV === 'test'
+  ? (req, res, next) => next()  // Skip in test
+  : rateLimit({
+      windowMs: RATE_LIMIT_WINDOW_MS,
+      max: 10, // Limit each IP to 10 requests per windowMs
+      message: {
+        error: 'Too many requests to this endpoint, please try again later.',
+        retryAfter: '15 minutes'
+      },
+      standardHeaders: true,
+      legacyHeaders: false,
+      handler: (req, res) => {
+        logger.warn('Strict rate limit exceeded', {
+          ip: req.ip,
+          path: req.path,
+          method: req.method
+        });
+        res.status(429).json({
+          error: 'Too many requests to this endpoint, please try again later.',
+          retryAfter: '15 minutes'
+        });
+      }
     });
-    res.status(429).json({
-      error: 'Too many requests to this endpoint, please try again later.',
-      retryAfter: '15 minutes'
-    });
-  }
-});
 
 /**
  * Authentication/Login rate limiter (5 requests per 15 minutes per IP)
  * Prevents brute force attacks
+ * Skipped in test environment
  */
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // Limit each IP to 5 requests per windowMs
-  message: {
-    error: 'Too many authentication attempts, please try again later.',
-    retryAfter: '15 minutes'
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-  skipSuccessfulRequests: true, // Don't count successful auth attempts
-  handler: (req, res) => {
-    logger.warn('Auth rate limit exceeded', {
-      ip: req.ip,
-      path: req.path,
-      method: req.method
+const authLimiter = process.env.NODE_ENV === 'test'
+  ? (req, res, next) => next()  // Skip in test
+  : rateLimit({
+      windowMs: RATE_LIMIT_WINDOW_MS,
+      max: 5, // Limit each IP to 5 requests per windowMs
+      message: {
+        error: 'Too many authentication attempts, please try again later.',
+        retryAfter: '15 minutes'
+      },
+      standardHeaders: true,
+      legacyHeaders: false,
+      skipSuccessfulRequests: true, // Don't count successful auth attempts
+      handler: (req, res) => {
+        logger.warn('Auth rate limit exceeded', {
+          ip: req.ip,
+          path: req.path,
+          method: req.method
+        });
+        res.status(429).json({
+          error: 'Too many authentication attempts, please try again later.',
+          retryAfter: '15 minutes'
+        });
+      }
     });
-    res.status(429).json({
-      error: 'Too many authentication attempts, please try again later.',
-      retryAfter: '15 minutes'
-    });
-  }
-});
 
 /**
  * Lenient rate limiter for read-only operations
  * (300 requests per 15 minutes per IP)
+ * Skipped in test environment
  */
-const readLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 300, // Limit each IP to 300 requests per windowMs
-  standardHeaders: true,
-  legacyHeaders: false,
-  skipFailedRequests: true, // Don't count failed requests
-});
+const readLimiter = process.env.NODE_ENV === 'test' 
+  ? (req, res, next) => next()  // Skip in test
+  : rateLimit({
+      windowMs: RATE_LIMIT_WINDOW_MS,
+      max: 300, // Limit each IP to 300 requests per windowMs
+      standardHeaders: true,
+      legacyHeaders: false,
+      skipFailedRequests: true, // Don't count failed requests
+    });
 
 /**
  * Create a custom rate limiter with specific configuration

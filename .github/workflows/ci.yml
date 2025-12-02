@@ -212,7 +212,7 @@ jobs:
       - name: Start backend server
         working-directory: ./backend
         env:
-          NODE_ENV: test
+          NODE_ENV: production  # Use production to enable rate limiting for security tests
           PORT: 5000
           DB_HOST: localhost
           DB_PORT: 5432
@@ -223,6 +223,7 @@ jobs:
           ASI_API_KEY: test-api-key
           LLM_CACHE_ENABLED: true
           LOG_LEVEL: info
+          RATE_LIMIT_WINDOW_MS: 30000  # 30 seconds for faster CI testing
         run: |
           nohup npm start > server.log 2>&1 &
           echo $! > server.pid
@@ -281,6 +282,10 @@ jobs:
           if [ "$rate_limited" = "false" ]; then
             echo "⚠ Rate limit not triggered (may be expected in CI)"
           fi
+          
+          # Wait for rate limit window to reset (30 seconds + 5 second buffer)
+          echo "Waiting 35 seconds for rate limit window to reset..."
+          sleep 35
 
       - name: Test Rate Limit Headers
         run: |

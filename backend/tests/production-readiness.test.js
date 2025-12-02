@@ -184,7 +184,7 @@ describe('Production Readiness Tests', () => {
       
       expect(results).toHaveLength(queryCount);
       results.forEach((result, i) => {
-        expect(result.rows[0].query_num).toBe(i);
+        expect(parseInt(result.rows[0].query_num)).toBe(i);
       });
     });
 
