@@ -100,7 +100,6 @@ docker compose -f docker-compose.prod.yml logs | grep migration
 
 **📖 Full documentation**: 
 - [`PRODUCTION.md`](./PRODUCTION.md) - Detailed deployment guide
-- [`SECURITY_MONITORING.md`](./SECURITY_MONITORING.md) - Security features and monitoring
 
 
 ### Database Management
