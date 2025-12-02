@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { inventoryAPI, simulationAPI, cartAPI } from '../services/api';
-import { Package, AlertTriangle, TrendingDown, Calendar, RefreshCw, Trash2, ShoppingCart, Sliders } from 'lucide-react';
+import { inventoryAPI, simulationAPI, cartAPI, preferencesAPI } from '../services/api';
+import { Package, AlertTriangle, TrendingDown, Calendar, RefreshCw, Trash2, ShoppingCart, Sliders, Zap } from 'lucide-react';
 
 const InventoryDashboard = () => {
   const location = useLocation();
@@ -10,6 +10,16 @@ const InventoryDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [simulating, setSimulating] = useState(false);
+  
+  // Auto-order preferences
+  const [preferences, setPreferences] = useState(null);
+  const [autoOrderEnabled, setAutoOrderEnabled] = useState(false);
+  const [autoOrderThreshold, setAutoOrderThreshold] = useState(3);
+  const [savingPreferences, setSavingPreferences] = useState(false);
+  
+  // Computed threshold for low stock warning (use auto-order threshold if enabled, otherwise default to 3)
+  const lowStockThreshold = autoOrderEnabled ? autoOrderThreshold : 3;
+  
   // Get sort preference from localStorage or use default
   const [sortBy, setSortBy] = useState(() => {
     const saved = localStorage.getItem('inventorySortBy');
@@ -24,6 +34,57 @@ const InventoryDashboard = () => {
   useEffect(() => {
     localStorage.setItem('inventorySortBy', sortBy);
   }, [sortBy]);
+
+  // Load preferences
+  const loadPreferences = async () => {
+    try {
+      const data = await preferencesAPI.get();
+      setPreferences(data);
+      setAutoOrderEnabled(data.auto_order_enabled || false);
+      setAutoOrderThreshold(data.auto_order_threshold_days || 3);
+    } catch (err) {
+      console.error('Error loading preferences:', err);
+    }
+  };
+
+  // Save auto-order preferences
+  const handleSaveAutoOrderPreferences = async () => {
+    try {
+      setSavingPreferences(true);
+      await preferencesAPI.update({
+        auto_order_enabled: autoOrderEnabled,
+        auto_order_threshold_days: autoOrderThreshold,
+      });
+      await loadPreferences();
+    } catch (err) {
+      setError(err.response?.data?.error?.message || 'Failed to save auto-order settings');
+      console.error('Error saving preferences:', err);
+    } finally {
+      setSavingPreferences(false);
+    }
+  };
+
+  // Toggle auto-order
+  const handleToggleAutoOrder = async () => {
+    const newValue = !autoOrderEnabled;
+    setAutoOrderEnabled(newValue);
+    
+    try {
+      setSavingPreferences(true);
+      await preferencesAPI.update({
+        auto_order_enabled: newValue,
+        auto_order_threshold_days: autoOrderThreshold,
+      });
+      await loadPreferences();
+    } catch (err) {
+      // Revert on error
+      setAutoOrderEnabled(!newValue);
+      setError(err.response?.data?.error?.message || 'Failed to toggle auto-order');
+      console.error('Error toggling auto-order:', err);
+    } finally {
+      setSavingPreferences(false);
+    }
+  };
 
   // Load inventory data
   const loadInventory = async () => {
@@ -40,15 +101,17 @@ const InventoryDashboard = () => {
     }
   };
 
-  // Load low stock items
-  const loadLowStock = async () => {
-    try {
-      const data = await inventoryAPI.getLowStock();
-      setLowStock(data.items || []);
-    } catch (err) {
-      console.error('Error loading low stock:', err);
-    }
-  };
+  // Filter low stock items from inventory based on current threshold
+  useEffect(() => {
+    const filtered = inventory.filter(item => {
+      if (!item.predicted_runout) return false;
+      const runoutDate = new Date(item.predicted_runout);
+      const now = new Date();
+      const daysUntilRunout = (runoutDate - now) / (1000 * 60 * 60 * 24);
+      return daysUntilRunout <= lowStockThreshold && daysUntilRunout >= 0;
+    });
+    setLowStock(filtered);
+  }, [inventory, lowStockThreshold]);
 
   // Simulate a day
   const handleSimulateDay = async () => {
@@ -57,7 +120,6 @@ const InventoryDashboard = () => {
       await simulationAPI.simulateDay();
       // Reload data after simulation
       await loadInventory();
-      await loadLowStock();
     } catch (err) {
       setError(err.response?.data?.error?.message || 'Simulation failed');
     } finally {
@@ -78,7 +140,6 @@ const InventoryDashboard = () => {
       
       // Reload inventory after deletion
       await loadInventory();
-      await loadLowStock();
       
       // Clear confirmation state
       setConfirmingDelete(null);
@@ -116,7 +177,6 @@ const InventoryDashboard = () => {
       
       // Reload inventory after deletion
       await loadInventory();
-      await loadLowStock();
       
       // Clear confirmation state
       setConfirmingDelete(null);
@@ -196,7 +256,6 @@ const InventoryDashboard = () => {
         
         // Reload inventory after update
         await loadInventory();
-        await loadLowStock();
         
         // Exit depletion mode
         setDepletingItem(null);
@@ -210,7 +269,7 @@ const InventoryDashboard = () => {
 
   useEffect(() => {
     loadInventory();
-    loadLowStock();
+    loadPreferences();
   }, []);
 
   // Format date for display
@@ -362,7 +421,7 @@ const InventoryDashboard = () => {
             <div>
               <h3 className="font-semibold text-yellow-900">Low Stock Alert</h3>
               <p className="text-sm text-yellow-800 mt-1">
-                {lowStock.length} item{lowStock.length !== 1 ? 's' : ''} running low (less than 3 days)
+                {lowStock.length} item{lowStock.length !== 1 ? 's' : ''} running low (less than {lowStockThreshold} {lowStockThreshold === 1 ? 'day' : 'days'})
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {lowStock.map((item) => (
@@ -378,6 +437,82 @@ const InventoryDashboard = () => {
           </div>
         </div>
       )}
+
+      {/* Auto-Order Controls */}
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4">
+        <div className="flex items-start gap-3">
+          <Zap className={`w-5 h-5 mt-0.5 ${autoOrderEnabled ? 'text-blue-600' : 'text-gray-400'}`} />
+          <div className="flex-1">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-gray-900">Auto-Order</h3>
+              <button
+                onClick={handleToggleAutoOrder}
+                disabled={savingPreferences}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                  autoOrderEnabled ? 'bg-blue-600' : 'bg-gray-300'
+                } ${savingPreferences ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    autoOrderEnabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* Threshold Controls - only show when enabled */}
+            {autoOrderEnabled && (
+              <div className="bg-white rounded-lg p-3 border border-blue-200">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm text-gray-700">
+                    Items predicted to run out within
+                  </p>
+                  <button
+                    onClick={async () => {
+                      const newValue = Math.max(1, autoOrderThreshold - 1);
+                      setAutoOrderThreshold(newValue);
+                      try {
+                        await preferencesAPI.update({
+                          auto_order_enabled: autoOrderEnabled,
+                          auto_order_threshold_days: newValue,
+                        });
+                      } catch (err) {
+                        console.error('Error updating threshold:', err);
+                      }
+                    }}
+                    className="w-7 h-7 flex items-center justify-center bg-gray-100 hover:bg-gray-200 text-gray-700 rounded border border-gray-300 font-semibold text-lg transition-colors"
+                  >
+                    -
+                  </button>
+                  <span className="text-sm text-gray-700 min-w-[50px] text-center font-medium">
+                    {autoOrderThreshold} {autoOrderThreshold === 1 ? 'day' : 'days'}
+                  </span>
+                  <button
+                    onClick={async () => {
+                      const newValue = Math.min(30, autoOrderThreshold + 1);
+                      setAutoOrderThreshold(newValue);
+                      try {
+                        await preferencesAPI.update({
+                          auto_order_enabled: autoOrderEnabled,
+                          auto_order_threshold_days: newValue,
+                        });
+                      } catch (err) {
+                        console.error('Error updating threshold:', err);
+                      }
+                    }}
+                    className="w-7 h-7 flex items-center justify-center bg-gray-100 hover:bg-gray-200 text-gray-700 rounded border border-gray-300 font-semibold text-lg transition-colors"
+                  >
+                    +
+                  </button>
+                  <p className="text-sm text-gray-700">
+                    will be automatically added to your cart
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* Sort Controls */}
       {inventory.length > 0 && (
@@ -449,8 +584,8 @@ const InventoryDashboard = () => {
             // Determine background color
             const backgroundColor = isNewlyAdded ? 'bg-green-50' : 'bg-white';
             
-            // Only show "runs out in" if days until runout is 3 or less
-            const showRunsOutIn = hasConsumption && daysUntilRunout >= 0 && daysUntilRunout <= 3;
+            // Show "runs out in" if days until runout is within the low stock threshold
+            const showRunsOutIn = hasConsumption && daysUntilRunout >= 0 && daysUntilRunout <= lowStockThreshold;
             
             return (
               <div

@@ -361,7 +361,8 @@ class Preferences {
   static async update(userId, updates) {
     const allowedFields = [
       'max_spend', 'approval_mode', 'auto_approve_limit', 'brand_prefs', 
-      'allowed_vendors', 'notify_low_inventory', 'notify_order_ready'
+      'allowed_vendors', 'notify_low_inventory', 'notify_order_ready',
+      'auto_order_enabled', 'auto_order_threshold_days'
     ];
     
     const fields = Object.keys(updates).filter(key => allowedFields.includes(key));

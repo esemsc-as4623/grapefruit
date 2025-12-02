@@ -47,6 +47,8 @@ const preferencesSchema = Joi.object({
   allowed_vendors: Joi.array().items(Joi.string()).optional(),
   notify_low_inventory: Joi.boolean().optional(),
   notify_order_ready: Joi.boolean().optional(),
+  auto_order_enabled: Joi.boolean().optional(),
+  auto_order_threshold_days: Joi.number().integer().min(0).max(30).optional(),
 });
 
 const orderSchema = Joi.object({

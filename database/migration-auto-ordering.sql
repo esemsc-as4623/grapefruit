@@ -163,7 +163,7 @@ INSERT INTO amazon_catalog (item_name, category, price, unit, brand, in_stock) V
 ON CONFLICT (item_name) DO NOTHING;
 
 -- ============================================
--- FUNCTION: Auto-detect zero inventory items
+-- FUNCTION: Auto-detect low inventory items based on user preferences
 -- ============================================
 CREATE OR REPLACE FUNCTION detect_zero_inventory()
 RETURNS TABLE (
@@ -174,17 +174,29 @@ DECLARE
     v_items_added INTEGER := 0;
     v_items JSONB := '[]'::jsonb;
     v_item RECORD;
+    v_pref RECORD;
 BEGIN
-    -- Find inventory items at zero that aren't already in to_order
+    -- Find inventory items that meet auto-order criteria
     FOR v_item IN
         SELECT i.id, i.user_id, i.item_name, i.unit, i.category,
                i.last_purchase_quantity,
+               i.predicted_runout,
                -- Default reorder quantity: last purchase quantity or 1
-               COALESCE(i.last_purchase_quantity, 1.0) as reorder_qty
+               COALESCE(i.last_purchase_quantity, 1.0) as reorder_qty,
+               p.auto_order_enabled,
+               p.auto_order_threshold_days
         FROM inventory i
         LEFT JOIN to_order t ON t.inventory_id = i.id AND t.status IN ('pending', 'ordered')
-        WHERE i.quantity <= 0
-          AND t.id IS NULL
+        LEFT JOIN preferences p ON p.user_id = i.user_id
+        WHERE t.id IS NULL  -- Not already in to_order
+          AND (
+            -- Check if auto-order is enabled for this user
+            (p.auto_order_enabled = true AND i.predicted_runout IS NOT NULL
+             AND i.predicted_runout <= CURRENT_DATE + INTERVAL '1 day' * COALESCE(p.auto_order_threshold_days, 3))
+            OR
+            -- Always add items at zero quantity regardless of auto-order setting
+            (i.quantity <= 0)
+          )
     LOOP
         -- Insert into to_order
         INSERT INTO to_order (
@@ -198,7 +210,8 @@ BEGIN
         v_items := v_items || jsonb_build_object(
             'item_name', v_item.item_name,
             'quantity', v_item.reorder_qty,
-            'unit', v_item.unit
+            'unit', v_item.unit,
+            'predicted_runout', v_item.predicted_runout
         );
     END LOOP;
 

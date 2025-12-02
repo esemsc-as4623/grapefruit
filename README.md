@@ -142,13 +142,21 @@ npm test -- --coverage                # With coverage report
 **Branch**: `dev`
 
 ### ✅ Completed Features
-- **Database**: PostgreSQL with 3 core tables (inventory, preferences, orders)
+- **Database**: PostgreSQL with 8 tables (inventory, preferences, orders, cart, consumption_history, amazon_catalog, to_order, background_jobs)
 - **Backend API**: Express.js with comprehensive RESTful endpoints
   - `/api/inventory` - Full CRUD for inventory management
   - `/api/receipts` - Complete receipt processing workflow
   - `/api/orders` - Order creation and approval
-  - `/api/preferences` - User preference management
+  - `/api/preferences` - User preference management (including auto-order settings)
   - `/api/simulate` - Demo forecasting and consumption simulation
+  - `/api/auto-order` - Auto-ordering system management
+- **Auto-Ordering System**:
+  - ✅ User-configurable auto-order toggle
+  - ✅ Adjustable threshold (1-30 days before runout)
+  - ✅ Background scheduler (runs every 5 minutes)
+  - ✅ Automatic detection of low inventory
+  - ✅ Integration with consumption predictions
+  - ✅ UI controls on Inventory Dashboard
 - **Receipt Processing Pipeline**: 
   - ✅ LLM-powered parsing (ASI Cloud integration)
   - ✅ Rule-based fallback parser
@@ -334,6 +342,14 @@ grapefruit/
 - Spending cap validation
 - Order approval workflow
 - Order status tracking
+- **Auto-ordering system** with user-configurable settings
+
+**Auto-Order Features:**
+- Toggle to enable/disable automatic ordering
+- Configurable threshold (1-30 days before runout)
+- Background scheduler checks inventory every 5 minutes
+- Items at zero quantity are always added to order queue
+- When enabled, items predicted to run out within threshold are automatically queued
 
 **In Progress:**
 - Vendor API integration (Amazon/Walmart)
