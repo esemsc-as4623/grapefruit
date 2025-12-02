@@ -325,7 +325,9 @@ grapefruit/
 │   │   │   ├── autoOrderScheduler.js # ✅ Background cron jobs (5-min interval)
 │   │   │   ├── cartPricer.js         # ✅ LLM-powered price/quantity suggestions
 │   │   │   ├── consumptionLearner.js # ✅ Consumption tracking
-│   │   │   └── priceService.js       # ✅ Price estimation
+│   │   │   ├── priceService.js       # ✅ Price estimation
+│   │   │   ├── x402Protocol.js       # ✅ Autonomous payments (AKEDO-inspired)
+│   │   │   └── ipfsStorage.js        # ✅ Decentralized user-owned storage
 │   │   ├── utils/
 │   │   │   ├── itemNormalizer.js     # ✅ Item parsing & normalization
 │   │   │   ├── categoryInference.js  # ✅ Automatic category detection
@@ -334,7 +336,7 @@ grapefruit/
 │   │   │   └── db.js                 # ✅ Database models & operations
 │   │   ├── middleware/
 │   │   │   ├── errorHandler.js       # ✅ Global error handling
-│   │   │   └── encryption.js         # ✅ Data encryption utilities
+│   │   │   └── encryption.js         # ✅ AES-256-GCM encryption + privacy features
 │   │   ├── config/
 │   │   │   ├── database.js           # ✅ PostgreSQL connection config
 │   │   │   └── llm.js                # ✅ LLM configuration & prompts
@@ -613,7 +615,189 @@ grapefruit/
 
 ---
 
-## 🧪 Testing
+## 🔒 Security & Privacy Features
+
+### Encryption Implementation
+
+**AES-256-GCM Encryption** (`backend/src/middleware/encryption.js`):
+- ✅ **Military-grade encryption**: AES-256-GCM with authenticated encryption
+- ✅ **Key management**: 
+  - Environment variable support (production)
+  - Persistent key file for development (prevents data loss)
+  - Auto-generation with secure storage
+- ✅ **Security features**:
+  - 16-byte initialization vectors (IV) per encryption
+  - Authentication tags for integrity verification
+  - SHA-256 hashing for checksums
+  - Replay attack prevention (5-minute time windows)
+
+**Core Functions:**
+```javascript
+// Encrypt sensitive data
+encrypt(plaintext) → "iv:authTag:ciphertext"
+
+// Decrypt with integrity verification
+decrypt(encrypted) → plaintext
+
+// SHA-256 hashing
+hash(data) → hexString
+
+// Express middleware
+encryptRequestFields(['field1', 'field2'])
+decryptResponseFields(['field1', 'field2'])
+```
+
+### Privacy-Preserving Features (AKEDO-Inspired)
+
+**Redacted Logging** - Automatically redacts sensitive data in logs:
+- Item names, prices, user IDs hashed before logging
+- API keys, tokens, passwords never logged
+- Preserves audit capability with hash prefixes
+- Recursive redaction for nested objects
+
+**Encrypted Audit Logs**:
+- Complete operation recording with encryption
+- Tamper-proof checksums for integrity
+- Timestamp verification
+- Secure decryption and verification
+
+**Sensitive Data Patterns**:
+```javascript
+SENSITIVE_PATTERNS = {
+  fields: ['item_name', 'items', 'user_id', 'brand_prefs', 
+           'order_id', 'tracking_number', 'price', 'total'],
+  patterns: [/api[_-]?key/i, /password/i, /secret/i, /token/i]
+}
+```
+
+### Spending Authorization Controls
+
+**Multi-Signature Pattern** (inspired by AKEDO Section 4.3):
+```javascript
+DEFAULT_AUTHORIZATION_LIMITS = {
+  per_transaction: $50.00,        // Hard limit per order
+  daily_limit: $200.00,            // Daily spending cap
+  requires_approval_above: $25.00, // User approval required
+  expiration_hours: 24             // Authorization validity
+}
+```
+
+**Features:**
+- ✅ Configurable spending limits per user
+- ✅ Automatic approval for small purchases (<$25)
+- ✅ User approval required for large purchases
+- ✅ Daily spending caps to prevent runaway automation
+- ✅ Transaction amount validation before processing
+
+### x402 Protocol Integration
+
+**Autonomous Payment System** (`backend/src/services/x402Protocol.js`):
+
+Based on the [x402 protocol](https://www.x402.org) for account-free API access and AI agent payments:
+
+**Features:**
+- ✅ **Account-free payments**: No signup required for API access
+- ✅ **Autonomous AI agents**: Agents can make purchasing decisions independently
+- ✅ **Privacy-preserving**: No personal information required
+- ✅ **Crypto micropayments**: Support for small transaction amounts
+- ✅ **Secure headers**: Encrypted payment headers with integrity checks
+- ✅ **Replay attack prevention**: Time-limited nonces and timestamps
+
+**X402Header Structure:**
+```javascript
+{
+  version: '1.0',
+  amount: 24.99,
+  currency: 'USD',
+  timestamp: Date.now(),
+  nonce: randomHex(16),
+  payee: 'vendor_address',
+  payer: 'user_or_agent_address',
+  metadata: { order_id: '...' },
+  checksum: sha256(headerData)
+}
+```
+
+**Usage Example:**
+```javascript
+// Generate secure payment header
+const header = new X402Header({
+  amount: 24.99,
+  currency: 'USD',
+  payee: 'amazon_api_address',
+  payer: 'user_wallet_address'
+});
+
+const encrypted = header.serialize(); // Encrypted transmission
+
+// Verify on receipt
+const verified = X402Header.deserialize(encrypted);
+// Automatically checks: timestamp, checksum, integrity
+```
+
+### User-Owned Storage (IPFS)
+
+**Decentralized Storage** (`backend/src/services/ipfsStorage.js`):
+
+Instead of storing receipt images on our servers:
+1. ✅ **Client-side encryption**: User encrypts data with their own key
+2. ✅ **IPFS upload**: Encrypted data stored on decentralized IPFS
+3. ✅ **Database**: We only store the IPFS hash (CID)
+4. ✅ **User ownership**: User can retrieve from IPFS anytime with their key
+
+**Benefits:**
+- **Data ownership**: Users own their data, not us
+- **Privacy**: We never see plaintext receipt data
+- **Decentralization**: No central server to breach
+- **Permanence**: IPFS content addressing ensures data integrity
+
+**Configuration:**
+```bash
+# Optional IPFS configuration
+IPFS_HOST=ipfs.infura.io
+IPFS_PORT=5001
+IPFS_PROTOCOL=https
+
+# Infura IPFS (if using Infura gateway)
+INFURA_PROJECT_ID=your_project_id
+INFURA_API_SECRET=your_api_secret
+```
+
+**Features:**
+- ✅ Automatic fallback to local mock storage for development
+- ✅ Support for public IPFS gateways (free tier)
+- ✅ Infura IPFS integration for production
+- ✅ Content addressing with CID verification
+- ✅ Encryption before upload
+
+### Security Best Practices Implemented
+
+**Data Protection:**
+- ✅ All sensitive fields encrypted at rest
+- ✅ TLS/HTTPS for data in transit
+- ✅ Helmet security headers (XSS, clickjacking, etc.)
+- ✅ CORS configuration for API access control
+- ✅ SQL injection prevention via parameterized queries
+
+**Authentication & Authorization:**
+- ✅ User isolation via `user_id` field
+- ✅ Spending limit enforcement
+- ✅ Multi-level approval workflows
+- ✅ API key validation for LLM services
+
+**Audit & Compliance:**
+- ✅ Encrypted audit logs with tamper detection
+- ✅ Privacy-preserving request logging
+- ✅ Complete transaction history
+- ✅ Timestamp verification for all operations
+
+**Key Management:**
+- ✅ Environment variable support
+- ✅ Secure key generation
+- ✅ Key rotation capability
+- ✅ Development failsafe (prevents data loss)
+
+
 
 The project includes a comprehensive test suite with **59+ passing tests** covering integration, receipt processing, inventory management, and auto-ordering workflows.
 
@@ -833,6 +1017,12 @@ WALMART_API_KEY=your-walmart-api-key
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
+**Note**: In development, if `ENCRYPTION_KEY` is not set, the system will:
+1. Auto-generate a secure key
+2. Save it to `.encryption-key` file
+3. Reuse it on subsequent runs (prevents data loss)
+4. **Production requires** `ENCRYPTION_KEY` environment variable
+
 **Amazon & Walmart APIs (Optional):**
 - Currently using mock catalog
 - Real API integration planned for future releases
@@ -1020,11 +1210,14 @@ cp .env.example .env
   - Add E2E tests with Playwright/Cypress
   - Performance benchmarking
   - Load testing with k6
-- **Security**:
-  - Implement full encryption for sensitive data
+  - Security penetration testing
+- **Security Enhancements**:
+  - ✅ ~~Implement AES-256-GCM encryption~~ **COMPLETED**
+  - ✅ ~~Privacy-preserving logging~~ **COMPLETED**
+  - ✅ ~~Spending authorization controls~~ **COMPLETED**
   - Add rate limiting per user
   - API key rotation mechanism
-  - Security audit and penetration testing
+  - OAuth2/JWT authentication for multi-user
 - **Documentation**:
   - OpenAPI/Swagger specification
   - Architecture decision records (ADRs)
