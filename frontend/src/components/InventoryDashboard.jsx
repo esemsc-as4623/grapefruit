@@ -103,13 +103,12 @@ const InventoryDashboard = () => {
       // Determine source based on confirmingDelete
       const source = confirmingDelete?.source || 'trash';
 
-      // Add to cart with quantity of 1
+      // Add to cart - let LLM suggest quantity, unit, and price
       await cartAPI.addItem({
         item_name: item.item_name,
-        quantity: 1,
-        unit: item.unit,
         category: item.category,
         source: source,
+        use_llm_pricing: true, // Enable LLM pricing
       });
       
       await inventoryAPI.delete(itemId);
@@ -134,14 +133,13 @@ const InventoryDashboard = () => {
     try {
       await cartAPI.addItem({
         item_name: item.item_name,
-        quantity: 1, // Default quantity
-        unit: item.unit,
         category: item.category,
         source: 'cart_icon',
+        use_llm_pricing: true, // Let LLM suggest quantity, unit, and price
       });
       
       // Show success feedback (you could add a toast notification here)
-      console.log(`Added ${item.item_name} to cart`);
+      console.log(`Added ${item.item_name} to cart with LLM-suggested pricing`);
     } catch (err) {
       setError(err.response?.data?.error?.message || 'Failed to add item to cart');
       console.error('Error adding to cart:', err);

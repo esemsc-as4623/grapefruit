@@ -3,6 +3,7 @@ const Joi = require('joi');
 const { Inventory, Preferences, Orders, Cart } = require('../models/db');
 const logger = require('../utils/logger');
 const consumptionLearner = require('../services/consumptionLearner');
+const { suggestPriceAndQuantity } = require('../services/cartPricer');
 
 const router = express.Router();
 
@@ -64,12 +65,13 @@ const orderSchema = Joi.object({
 
 const cartItemSchema = Joi.object({
   item_name: Joi.string().required().max(255),
-  quantity: Joi.number().min(0.01).required(),
-  unit: Joi.string().required().max(50),
+  quantity: Joi.number().min(0.01).optional(), // Made optional - LLM can suggest
+  unit: Joi.string().max(50).optional(),        // Made optional - LLM can suggest
   category: Joi.string().max(100).optional(),
   estimated_price: Joi.number().min(0).optional(),
   notes: Joi.string().max(500).optional(),
   source: Joi.string().valid('manual', 'trash', 'deplete', 'cart_icon').optional(),
+  use_llm_pricing: Joi.boolean().optional().default(true), // Enable LLM pricing by default
 });
 
 // ============================================
@@ -665,7 +667,7 @@ router.get('/cart/:id', validateUUID('id'), async (req, res, next) => {
 
 /**
  * POST /cart
- * Add item to cart
+ * Add item to cart with LLM-suggested pricing and quantity
  */
 router.post('/cart', async (req, res, next) => {
   try {
@@ -675,11 +677,54 @@ router.post('/cart', async (req, res, next) => {
     }
     
     const userId = req.body.user_id || 'demo_user';
+    const useLLMPricing = value.use_llm_pricing !== false; // Default to true
     
-    const item = await Cart.addItem({
-      ...value,
-      user_id: userId,
-    });
+    let itemData = { ...value, user_id: userId };
+    
+    // If quantity or unit not provided, or if use_llm_pricing is true, get LLM suggestions
+    if (useLLMPricing && (!value.quantity || !value.unit || !value.estimated_price)) {
+      try {
+        logger.info(`Getting LLM pricing suggestion for: ${value.item_name}`);
+        const suggestion = await suggestPriceAndQuantity(value.item_name, value.category);
+        
+        // Use LLM suggestions for missing fields
+        if (!value.quantity) {
+          itemData.quantity = suggestion.suggested_quantity;
+        }
+        if (!value.unit) {
+          itemData.unit = suggestion.unit;
+        }
+        if (!value.estimated_price) {
+          itemData.estimated_price = suggestion.estimated_price_per_unit;
+        }
+        
+        // Add LLM metadata to notes if not already present
+        if (!value.notes) {
+          itemData.notes = `Suggested: ${suggestion.suggested_quantity} ${suggestion.unit} @ $${suggestion.estimated_price_per_unit}/${suggestion.unit} (${suggestion.source}, confidence: ${(suggestion.confidence * 100).toFixed(0)}%)`;
+        }
+        
+        logger.info(`Applied LLM suggestions for ${value.item_name}:`, {
+          quantity: itemData.quantity,
+          unit: itemData.unit,
+          price: itemData.estimated_price,
+          confidence: suggestion.confidence,
+        });
+      } catch (llmError) {
+        // If LLM fails, continue with user-provided values or throw error if required fields missing
+        logger.warn(`LLM pricing failed for ${value.item_name}, using provided values:`, llmError.message);
+        
+        if (!value.quantity || !value.unit) {
+          return res.status(400).json({ 
+            error: { 
+              message: 'Quantity and unit are required when LLM pricing is unavailable',
+              llm_error: llmError.message 
+            } 
+          });
+        }
+      }
+    }
+    
+    const item = await Cart.addItem(itemData);
     
     logger.info(`Item added to cart: ${item.id} - ${item.item_name}`);
     res.status(201).json(item);

@@ -9,6 +9,8 @@ const CartReview = () => {
   const [cartTotal, setCartTotal] = useState(0);
   const [cartCount, setCartCount] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const [newItemName, setNewItemName] = useState('');
+  const [addingItem, setAddingItem] = useState(false);
 
   // Load cart items
   const loadCart = async () => {
@@ -118,6 +120,31 @@ const CartReview = () => {
       setError(err.response?.data?.error?.message || 'Failed to create order');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // Quick add item handler
+  const handleQuickAddItem = async (e) => {
+    e.preventDefault();
+    
+    if (!newItemName.trim()) return;
+    
+    try {
+      setAddingItem(true);
+      setError(null);
+      
+      await cartAPI.addItem({
+        item_name: newItemName.trim(),
+        use_llm_pricing: true, // Let AI suggest everything
+        source: 'manual',
+      });
+      
+      setNewItemName('');
+      await loadCart();
+    } catch (err) {
+      setError(err.response?.data?.error?.message || 'Failed to add item');
+    } finally {
+      setAddingItem(false);
     }
   };
 
@@ -353,6 +380,46 @@ const CartReview = () => {
             })()}
           </div>
 
+          {/* Quick Add Item Form */}
+          <div className="bg-white border border-gray-200 rounded-lg p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Add Item to Cart</h3>
+            <form onSubmit={handleQuickAddItem} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Item Name
+                </label>
+                <input
+                  type="text"
+                  value={newItemName}
+                  onChange={(e) => setNewItemName(e.target.value)}
+                  placeholder="e.g., Milk, Bananas, Chicken Breast"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-grapefruit-500 focus:border-grapefruit-500"
+                  disabled={addingItem}
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={addingItem || !newItemName.trim()}
+                className="w-full px-4 py-2 bg-grapefruit-500 text-white rounded-lg hover:bg-grapefruit-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {addingItem ? (
+                  <>
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                    Getting AI Suggestions...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-5 h-5" />
+                    Add with AI Pricing
+                  </>
+                )}
+              </button>
+            </form>
+            <p className="text-xs text-gray-500 mt-2">
+              AI will automatically suggest quantity and price based on typical grocery store prices
+            </p>
+          </div>
+
           {/* Help Text */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
             <div className="flex items-start gap-3">
@@ -360,8 +427,9 @@ const CartReview = () => {
               <div className="text-sm text-blue-800">
                 <p className="font-medium">How it works:</p>
                 <ul className="list-disc list-inside mt-2 space-y-1">
+                  <li>Add items manually above or from your inventory</li>
+                  <li>AI suggests realistic quantities and prices from Walmart/Amazon</li>
                   <li>Adjust quantities using the + and - buttons</li>
-                  <li>Estimated prices are used for calculation (${(5.99).toFixed(2)} default)</li>
                   <li>Click "Create Order" to submit for approval</li>
                   <li>After approval, your order will be placed automatically</li>
                 </ul>
