@@ -144,3 +144,9 @@ venv/
 .venv/
 __pycache__/
 *.pyc
+
+# AKEDO BOUNTY: Encryption keys (NEVER commit!)
+.encryption-key
+backend/.encryption-key
+backend/src/.encryption-key
+**/encryption-key

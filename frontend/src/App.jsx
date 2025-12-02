@@ -4,7 +4,7 @@ import InventoryDashboard from './components/InventoryDashboard';
 import CartReview from './components/CartReview';
 import PreferencesPanel from './components/PreferencesPanel';
 import ManualEntry from './components/ManualEntry';
-import ReceiptUpload from './components/ReceiptUpload';
+import ReceiptUploadPrivacy from './components/ReceiptUploadPrivacy';
 import ReceiptReview from './components/ReceiptReview';
 import { Package, ShoppingCart, Settings, Plus } from 'lucide-react';
 
@@ -234,7 +234,7 @@ const AddItemPage = () => {
       ) : (
         // Show upload options - Receipt upload first, manual entry second
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <ReceiptUpload onReceiptParsed={handleReceiptParsed} />
+          <ReceiptUploadPrivacy onReceiptParsed={handleReceiptParsed} />
           <ManualEntry onItemAdded={handleItemAdded} />
         </div>
       )}
