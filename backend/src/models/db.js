@@ -12,7 +12,18 @@ class Inventory {
   static async findByUser(userId = 'demo_user') {
     try {
       const result = await db.query(
-        'SELECT * FROM inventory WHERE user_id = $1 ORDER BY category, item_name',
+        `SELECT * FROM inventory WHERE user_id = $1 
+         ORDER BY 
+           CASE category
+             WHEN 'dairy' THEN 1
+             WHEN 'produce' THEN 2
+             WHEN 'meat' THEN 3
+             WHEN 'bread' THEN 4
+             WHEN 'pantry' THEN 5
+             WHEN 'others' THEN 6
+             ELSE 7
+           END,
+           item_name`,
         [userId]
       );
       return result.rows;
