@@ -316,47 +316,31 @@ class Preferences {
       );
 
       const result = await db.query(
-<<<<<<< HEAD
         `INSERT INTO preferences 
          (user_id, brand_prefs, allowed_vendors, 
-          notify_low_inventory, notify_order_ready, auto_order_enabled, auto_order_threshold_days)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+          notify_low_inventory, notify_order_ready, auto_order_enabled, auto_order_threshold_days, is_encrypted)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          ON CONFLICT (user_id) 
-=======
-        `INSERT INTO preferences
-         (user_id, max_spend, approval_mode, auto_approve_limit, brand_prefs, allowed_vendors,
-          notify_low_inventory, notify_order_ready, is_encrypted)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-         ON CONFLICT (user_id)
->>>>>>> 779717076abd2d6dc463e550025bc41a2e2da0b0
          DO UPDATE SET
            brand_prefs = EXCLUDED.brand_prefs,
            allowed_vendors = EXCLUDED.allowed_vendors,
            notify_low_inventory = EXCLUDED.notify_low_inventory,
            notify_order_ready = EXCLUDED.notify_order_ready,
-<<<<<<< HEAD
            auto_order_enabled = EXCLUDED.auto_order_enabled,
            auto_order_threshold_days = EXCLUDED.auto_order_threshold_days,
-           updated_at = CURRENT_TIMESTAMP
-         RETURNING *`,
-        [userId, JSON.stringify(brand_prefs), JSON.stringify(allowed_vendors),
-         notify_low_inventory, notify_order_ready, auto_order_enabled, auto_order_threshold_days]
-=======
            is_encrypted = EXCLUDED.is_encrypted,
            updated_at = CURRENT_TIMESTAMP
          RETURNING *`,
         [
           userId,
-          max_spend,
-          approval_mode,
-          auto_approve_limit,
           encryptedData.brand_prefs || JSON.stringify(brand_prefs),
           JSON.stringify(allowed_vendors),
           notify_low_inventory,
           notify_order_ready,
+          auto_order_enabled,
+          auto_order_threshold_days,
           encryptedData.is_encrypted || false
         ]
->>>>>>> 779717076abd2d6dc463e550025bc41a2e2da0b0
       );
       return decryptRow(result.rows[0], SENSITIVE_FIELDS.preferences);
     } catch (error) {
@@ -367,14 +351,9 @@ class Preferences {
 
   static async update(userId, updates) {
     const allowedFields = [
-<<<<<<< HEAD
-      'max_spend', 'approval_mode', 'auto_approve_limit', 'brand_prefs', 
+      'brand_prefs', 
       'allowed_vendors', 'notify_low_inventory', 'notify_order_ready',
       'auto_order_enabled', 'auto_order_threshold_days'
-=======
-      'max_spend', 'approval_mode', 'auto_approve_limit', 'brand_prefs',
-      'allowed_vendors', 'notify_low_inventory', 'notify_order_ready'
->>>>>>> 779717076abd2d6dc463e550025bc41a2e2da0b0
     ];
 
     const fields = Object.keys(updates).filter(key => allowedFields.includes(key));
