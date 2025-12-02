@@ -183,8 +183,8 @@ router.post('/day', async (req, res, next) => {
       
       // If quantity reaches 0 or goes below 0, delete and optionally add to cart
       if (newQuantity <= 0) {
-        if (Math.random() < 0.3) {
-          // 30% chance: Add to cart before deleting
+        if (Math.random() < 0.1) {
+          // 10% chance: Add to cart before deleting
           await Cart.addItem({
             user_id: userId,
             item_name: item.item_name,
@@ -279,15 +279,15 @@ router.post('/day', async (req, res, next) => {
           });
           
           if (newQuantity <= 0) {
-            // Very low quantity - delete and add to cart
-            await Cart.addItem({
-              user_id: userId,
-              item_name: item.item_name,
-              quantity: 1,
-              unit: item.unit,
-              category: item.category,
-              source: 'simulation',
-            });
+            // // Very low quantity - delete and add to cart
+            // await Cart.addItem({
+            //   user_id: userId,
+            //   item_name: item.item_name,
+            //   quantity: 1,
+            //   unit: item.unit,
+            //   category: item.category,
+            //   source: 'simulation',
+            // });
             cartAddedItems.push(item.item_name);
             await Inventory.delete(item.id);
             deletedItems.push(item.item_name);
@@ -315,24 +315,24 @@ router.post('/day', async (req, res, next) => {
         const daysUntilRunout = (new Date(item.predicted_runout) - new Date()) / (1000 * 60 * 60 * 24);
         
         if (daysUntilRunout <= 0) {
-          depletionScore = 1.0; // Already out or about to run out
+          depletionScore = 0.5; // Already out or about to run out
         } else if (daysUntilRunout <= 3) {
-          depletionScore = 0.8; // 80% chance if running out in 3 days
+          depletionScore = 0.3; // 30% chance if running out in 3 days
         } else if (daysUntilRunout <= 7) {
-          depletionScore = 0.4; // 40% chance if running out in a week
+          depletionScore = 0.15; // 15% chance if running out in a week
         } else if (daysUntilRunout <= 14) {
-          depletionScore = 0.1; // 10% chance if running out in 2 weeks
+          depletionScore = 0.05; // 5% chance if running out in 2 weeks
         } else {
           depletionScore = 0.01; // 1% chance otherwise
         }
       } else {
         // No predicted runout - use quantity-based heuristic
         if (item.quantity < 1) {
-          depletionScore = 0.6;
+          depletionScore = 0.25;
         } else if (item.quantity < 3) {
-          depletionScore = 0.3;
-        } else {
           depletionScore = 0.1;
+        } else {
+          depletionScore = 0.0;
         }
       }
       
