@@ -103,6 +103,71 @@ describe('Grapefruit Backend Integration Tests', () => {
   beforeAll(async () => {
     // Ensure database connection
     await db.query('SELECT NOW()');
+    
+    // Create consumption_history table if it doesn't exist
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS consumption_history (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        user_id VARCHAR(255) NOT NULL,
+        item_name VARCHAR(255) NOT NULL,
+        quantity_before DECIMAL(10, 2) NOT NULL,
+        quantity_after DECIMAL(10, 2) NOT NULL,
+        quantity_consumed DECIMAL(10, 2) NOT NULL,
+        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        days_elapsed DECIMAL(10, 4),
+        days_in_inventory DECIMAL(10, 4),
+        event_type VARCHAR(50) NOT NULL,
+        source VARCHAR(50),
+        unit VARCHAR(50),
+        category VARCHAR(100)
+      );
+      
+      CREATE INDEX IF NOT EXISTS idx_consumption_user_item ON consumption_history(user_id, item_name);
+      CREATE INDEX IF NOT EXISTS idx_consumption_timestamp ON consumption_history(timestamp DESC);
+      CREATE INDEX IF NOT EXISTS idx_consumption_user_timestamp ON consumption_history(user_id, timestamp DESC);
+      CREATE INDEX IF NOT EXISTS idx_consumption_event_type ON consumption_history(event_type);
+    `);
+    
+    // Create cart table if it doesn't exist
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS cart (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        user_id VARCHAR(255) NOT NULL DEFAULT 'demo_user',
+        item_name VARCHAR(255) NOT NULL,
+        quantity DECIMAL(10, 2) NOT NULL CHECK (quantity > 0),
+        unit VARCHAR(50) NOT NULL,
+        category VARCHAR(100),
+        estimated_price DECIMAL(10, 2),
+        notes TEXT,
+        added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        source VARCHAR(50) DEFAULT 'manual',
+        CONSTRAINT unique_user_cart_item UNIQUE(user_id, item_name)
+      );
+      
+      CREATE INDEX IF NOT EXISTS idx_cart_user_id ON cart(user_id);
+      CREATE INDEX IF NOT EXISTS idx_cart_added_at ON cart(added_at);
+    `);
+    
+    // Create trigger function for cart timestamp updates if it doesn't exist
+    await db.query(`
+      CREATE OR REPLACE FUNCTION update_cart_timestamp()
+      RETURNS TRIGGER AS $$
+      BEGIN
+        NEW.updated_at = CURRENT_TIMESTAMP;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+    `);
+    
+    // Create trigger for cart table if it doesn't exist
+    await db.query(`
+      DROP TRIGGER IF EXISTS cart_updated_at ON cart;
+      CREATE TRIGGER cart_updated_at
+        BEFORE UPDATE ON cart
+        FOR EACH ROW
+        EXECUTE FUNCTION update_cart_timestamp();
+    `);
   });
 
   afterAll(async () => {

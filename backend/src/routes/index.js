@@ -1,7 +1,8 @@
 const express = require('express');
 const Joi = require('joi');
-const { Inventory, Preferences, Orders } = require('../models/db');
+const { Inventory, Preferences, Orders, Cart } = require('../models/db');
 const logger = require('../utils/logger');
+const consumptionLearner = require('../services/consumptionLearner');
 
 const router = express.Router();
 
@@ -59,6 +60,16 @@ const orderSchema = Joi.object({
   tax: Joi.number().min(0).optional(),
   shipping: Joi.number().min(0).optional(),
   total: Joi.number().min(0).required(),
+});
+
+const cartItemSchema = Joi.object({
+  item_name: Joi.string().required().max(255),
+  quantity: Joi.number().min(0.01).required(),
+  unit: Joi.string().required().max(50),
+  category: Joi.string().max(100).optional(),
+  estimated_price: Joi.number().min(0).optional(),
+  notes: Joi.string().max(500).optional(),
+  source: Joi.string().valid('manual', 'trash', 'deplete', 'cart_icon').optional(),
 });
 
 // ============================================
@@ -280,10 +291,56 @@ router.post('/inventory/bulk', async (req, res, next) => {
  */
 router.put('/inventory/:id', validateUUID('id'), async (req, res, next) => {
   try {
+    // Get current item state before update
+    const currentItem = await Inventory.findById(req.params.id);
+    if (!currentItem) {
+      return res.status(404).json({ error: { message: 'Item not found' } });
+    }
+    
     const item = await Inventory.update(req.params.id, req.body);
     
-    if (!item) {
-      return res.status(404).json({ error: { message: 'Item not found' } });
+    // Record consumption event if quantity changed (and quantity decreased)
+    if (req.body.quantity !== undefined && req.body.quantity !== currentItem.quantity) {
+      const quantityChanged = currentItem.quantity - req.body.quantity;
+      
+      // Record the event (both increases and decreases)
+      await consumptionLearner.recordConsumptionEvent({
+        userId: currentItem.user_id,
+        itemName: currentItem.item_name,
+        quantityBefore: currentItem.quantity,
+        quantityAfter: req.body.quantity,
+        eventType: quantityChanged > 0 ? 'manual_depletion' : 'manual_update',
+        source: 'user',
+        unit: currentItem.unit,
+        category: currentItem.category,
+        itemCreatedAt: currentItem.created_at,
+      });
+      
+      // Only learn from depletions (quantity decreased), not restocks
+      if (quantityChanged > 0) {
+        // Manual depletions happen instantly - no time passage
+        // Only learn from historical patterns, not from real-world clock time
+        const learningResult = await consumptionLearner.learnConsumptionRate(
+          currentItem.user_id,
+          currentItem.item_name,
+          {
+            category: currentItem.category,
+            unit: currentItem.unit,
+            daysInInventory: null, // No time passage for manual actions
+          }
+        );
+        
+        // Update the item with learned consumption rate if we got a good estimate
+        if (learningResult.rate && learningResult.confidence !== 'very_low') {
+          await Inventory.update(req.params.id, {
+            average_daily_consumption: learningResult.rate,
+          });
+          
+          logger.info(
+            `Learned from manual depletion: ${currentItem.item_name}, rate: ${learningResult.rate.toFixed(3)}, confidence: ${learningResult.confidence}`
+          );
+        }
+      }
     }
     
     logger.info(`Inventory item updated: ${item.id}`);
@@ -299,11 +356,44 @@ router.put('/inventory/:id', validateUUID('id'), async (req, res, next) => {
  */
 router.delete('/inventory/:id', validateUUID('id'), async (req, res, next) => {
   try {
-    const item = await Inventory.delete(req.params.id);
-    
-    if (!item) {
+    // Get item before deleting to record consumption
+    const currentItem = await Inventory.findById(req.params.id);
+    if (!currentItem) {
       return res.status(404).json({ error: { message: 'Item not found' } });
     }
+    
+    // Record deletion as consumption event (if there was remaining quantity)
+    if (currentItem.quantity > 0) {
+      await consumptionLearner.recordConsumptionEvent({
+        userId: currentItem.user_id,
+        itemName: currentItem.item_name,
+        quantityBefore: currentItem.quantity,
+        quantityAfter: 0,
+        eventType: 'deletion',
+        source: 'user',
+        unit: currentItem.unit,
+        category: currentItem.category,
+        itemCreatedAt: currentItem.created_at,
+      });
+      
+      // Manual deletions happen instantly - no time passage
+      // Only learn from historical patterns, not from real-world clock time
+      const learningResult = await consumptionLearner.learnConsumptionRate(
+        currentItem.user_id,
+        currentItem.item_name,
+        {
+          category: currentItem.category,
+          unit: currentItem.unit,
+          daysInInventory: null, // No time passage for manual actions
+        }
+      );
+      
+      logger.info(
+        `Learned from deletion: ${currentItem.item_name}, rate: ${learningResult.rate?.toFixed(3)}, confidence: ${learningResult.confidence}`
+      );
+    }
+    
+    const item = await Inventory.delete(req.params.id);
     
     logger.info(`Inventory item deleted: ${item.id}`);
     res.json({ message: 'Item deleted successfully', item });
@@ -525,6 +615,128 @@ router.put('/orders/:id/placed', validateUUID('id'), async (req, res, next) => {
     
     logger.info(`Order placed: ${order.id}`);
     res.json(order);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ============================================
+// CART ROUTES
+// ============================================
+
+/**
+ * GET /cart
+ * Get all cart items for user
+ */
+router.get('/cart', async (req, res, next) => {
+  try {
+    const userId = req.query.user_id || 'demo_user';
+    const items = await Cart.findByUser(userId);
+    const count = await Cart.getCount(userId);
+    const total = await Cart.getTotalPrice(userId);
+    
+    res.json({
+      items,
+      count,
+      total,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /cart/:id
+ * Get single cart item
+ */
+router.get('/cart/:id', validateUUID('id'), async (req, res, next) => {
+  try {
+    const item = await Cart.findById(req.params.id);
+    
+    if (!item) {
+      return res.status(404).json({ error: { message: 'Cart item not found' } });
+    }
+    
+    res.json(item);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /cart
+ * Add item to cart
+ */
+router.post('/cart', async (req, res, next) => {
+  try {
+    const { error, value } = cartItemSchema.validate(req.body);
+    if (error) {
+      return res.status(400).json({ error: { message: error.details[0].message } });
+    }
+    
+    const userId = req.body.user_id || 'demo_user';
+    
+    const item = await Cart.addItem({
+      ...value,
+      user_id: userId,
+    });
+    
+    logger.info(`Item added to cart: ${item.id} - ${item.item_name}`);
+    res.status(201).json(item);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PUT /cart/:id
+ * Update cart item
+ */
+router.put('/cart/:id', validateUUID('id'), async (req, res, next) => {
+  try {
+    const item = await Cart.update(req.params.id, req.body);
+    
+    if (!item) {
+      return res.status(404).json({ error: { message: 'Cart item not found' } });
+    }
+    
+    logger.info(`Cart item updated: ${item.id}`);
+    res.json(item);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * DELETE /cart/:id
+ * Remove item from cart
+ */
+router.delete('/cart/:id', validateUUID('id'), async (req, res, next) => {
+  try {
+    const item = await Cart.removeItem(req.params.id);
+    
+    if (!item) {
+      return res.status(404).json({ error: { message: 'Cart item not found' } });
+    }
+    
+    logger.info(`Cart item removed: ${item.id}`);
+    res.json({ message: 'Item removed from cart', item });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * DELETE /cart
+ * Clear all cart items for user
+ */
+router.delete('/cart', async (req, res, next) => {
+  try {
+    const userId = req.query.user_id || 'demo_user';
+    const items = await Cart.clearCart(userId);
+    
+    logger.info(`Cart cleared for user: ${userId}`);
+    res.json({ message: 'Cart cleared', count: items.length });
   } catch (error) {
     next(error);
   }

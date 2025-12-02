@@ -148,6 +148,48 @@ export const ordersAPI = {
 };
 
 // ============================================
+// CART ENDPOINTS
+// ============================================
+
+export const cartAPI = {
+  // Get all cart items
+  getAll: async () => {
+    const response = await api.get('/cart');
+    return response.data;
+  },
+
+  // Get single cart item
+  getById: async (id) => {
+    const response = await api.get(`/cart/${id}`);
+    return response.data;
+  },
+
+  // Add item to cart
+  addItem: async (itemData) => {
+    const response = await api.post('/cart', itemData);
+    return response.data;
+  },
+
+  // Update cart item
+  update: async (id, updates) => {
+    const response = await api.put(`/cart/${id}`, updates);
+    return response.data;
+  },
+
+  // Remove item from cart
+  removeItem: async (id) => {
+    const response = await api.delete(`/cart/${id}`);
+    return response.data;
+  },
+
+  // Clear entire cart
+  clearCart: async () => {
+    const response = await api.delete('/cart');
+    return response.data;
+  },
+};
+
+// ============================================
 // SIMULATION ENDPOINTS
 // ============================================
 

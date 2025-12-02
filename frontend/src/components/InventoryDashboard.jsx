@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { inventoryAPI, simulationAPI } from '../services/api';
+import { inventoryAPI, simulationAPI, cartAPI } from '../services/api';
 import { Package, AlertTriangle, TrendingDown, Calendar, RefreshCw, Trash2, ShoppingCart, Sliders } from 'lucide-react';
 
 const InventoryDashboard = () => {
@@ -10,11 +10,20 @@ const InventoryDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [simulating, setSimulating] = useState(false);
-  const [sortBy, setSortBy] = useState(location.state?.sortBy || 'days'); // Default to 'days', then 'oldest', then 'category'
+  // Get sort preference from localStorage or use default
+  const [sortBy, setSortBy] = useState(() => {
+    const saved = localStorage.getItem('inventorySortBy');
+    return saved || location.state?.sortBy || 'days';
+  });
   const [hoveredItem, setHoveredItem] = useState(null);
   const [depletingItem, setDepletingItem] = useState(null); // Track which item is in deplete mode
   const [depleteValue, setDepleteValue] = useState(0); // Current slider value
   const [confirmingDelete, setConfirmingDelete] = useState(null); // Track item awaiting delete confirmation
+
+  // Save sort preference to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('inventorySortBy', sortBy);
+  }, [sortBy]);
 
   // Load inventory data
   const loadInventory = async () => {
@@ -79,11 +88,29 @@ const InventoryDashboard = () => {
     }
   };
 
-  // Delete item and add to order (placeholder - cart functionality to be implemented)
+  // Delete item and add to order
   const handleDeleteAndAddToOrder = async (itemId, itemName) => {
     try {
-      // TODO: Add to cart/order functionality
-      console.log(`Adding ${itemName} to order`);
+      // Get the item details - either from confirmingDelete.item or from inventory
+      let item = confirmingDelete?.item;
+      if (!item) {
+        item = inventory.find(i => i.id === itemId);
+      }
+      if (!item) {
+        throw new Error('Item not found');
+      }
+
+      // Determine source based on confirmingDelete
+      const source = confirmingDelete?.source || 'trash';
+
+      // Add to cart with quantity of 1
+      await cartAPI.addItem({
+        item_name: item.item_name,
+        quantity: 1,
+        unit: item.unit,
+        category: item.category,
+        source: source,
+      });
       
       await inventoryAPI.delete(itemId);
       
@@ -93,9 +120,31 @@ const InventoryDashboard = () => {
       
       // Clear confirmation state
       setConfirmingDelete(null);
+      
+      // Show success message
+      setError(null);
     } catch (err) {
       setError(err.response?.data?.error?.message || 'Failed to delete item');
       console.error('Error deleting item:', err);
+    }
+  };
+
+  // Add item to cart without deleting
+  const handleAddToCart = async (item) => {
+    try {
+      await cartAPI.addItem({
+        item_name: item.item_name,
+        quantity: 1, // Default quantity
+        unit: item.unit,
+        category: item.category,
+        source: 'cart_icon',
+      });
+      
+      // Show success feedback (you could add a toast notification here)
+      console.log(`Added ${item.item_name} to cart`);
+    } catch (err) {
+      setError(err.response?.data?.error?.message || 'Failed to add item to cart');
+      console.error('Error adding to cart:', err);
     }
   };
 
@@ -135,7 +184,10 @@ const InventoryDashboard = () => {
     try {
       // If quantity is 0, show confirmation to add to order
       if (newQuantity === 0) {
-        setConfirmingDelete({ id: itemId, name: itemName });
+        // Get the item details
+        const item = inventory.find(i => i.id === itemId);
+        
+        setConfirmingDelete({ id: itemId, name: itemName, item, source: 'deplete' });
         // Exit depletion mode
         setDepletingItem(null);
         setDepleteValue(0);
@@ -180,7 +232,7 @@ const InventoryDashboard = () => {
     if (item.quantity === 0 || item.quantity === '0' || item.quantity === '0.00') {
       return 'bg-red-100 border-red-300 text-red-800';
     }
-    if (!item.predicted_runout) return 'bg-green-100 border-green-300 text-green-800';
+    if (!item.predicted_runout) return 'border-gray-300';
     
     const date = new Date(item.predicted_runout);
     const now = new Date();
@@ -188,7 +240,7 @@ const InventoryDashboard = () => {
     
     if (diffDays <= 1) return 'bg-red-100 border-red-300 text-red-800';
     if (diffDays <= 3) return 'bg-yellow-100 border-yellow-300 text-yellow-800';
-    return 'bg-green-100 border-green-300 text-green-800';
+    return 'border-gray-300';
   };
 
   // Category icon and color
@@ -218,10 +270,23 @@ const InventoryDashboard = () => {
     const sorted = [...inventory];
     
     if (sortBy === 'category') {
+      // Define category order: Dairy, Produce, Meat, Pantry, Beverages, Snacks, Other
+      const categoryOrder = {
+        'dairy': 1,
+        'produce': 2,
+        'meat': 3,
+        'pantry': 4,
+        'beverages': 5,
+        'snacks': 6,
+        'other': 7
+      };
+      
       sorted.sort((a, b) => {
         const catA = (a.category || 'other').toLowerCase();
         const catB = (b.category || 'other').toLowerCase();
-        return catA.localeCompare(catB);
+        const orderA = categoryOrder[catA] || 7; // Default to 'other' if category not found
+        const orderB = categoryOrder[catB] || 7;
+        return orderA - orderB;
       });
     } else if (sortBy === 'days') {
       sorted.sort((a, b) => {
@@ -372,10 +437,19 @@ const InventoryDashboard = () => {
             const isConfirmingThisItem = confirmingDelete?.id === item.id;
             const stepSize = getStepSize(item.unit);
             
+            // Check if item was added in the last 24 hours
+            const createdDate = new Date(item.created_at);
+            const now = new Date();
+            const hoursSinceCreation = (now - createdDate) / (1000 * 60 * 60);
+            const isNewlyAdded = hoursSinceCreation <= 24;
+            
+            // Determine background color
+            const backgroundColor = isNewlyAdded ? 'bg-green-50' : 'bg-white';
+            
             return (
               <div
                 key={item.id}
-                className={`relative ${categoryInfo.color} border-2 ${statusColor.split(' ')[1]} rounded-lg p-4 hover:shadow-md transition-all group`}
+                className={`relative ${backgroundColor} border-2 ${statusColor.split(' ')[1]} rounded-lg p-4 hover:shadow-md transition-all group`}
                 onMouseEnter={() => !isDepletingThisItem && !isConfirmingThisItem && setHoveredItem(item.id)}
                 onMouseLeave={() => !isDepletingThisItem && !isConfirmingThisItem && setHoveredItem(null)}
               >
@@ -472,6 +546,13 @@ const InventoryDashboard = () => {
                     {hoveredItem === item.id && (
                       <div className="absolute top-2 right-2 flex gap-2 bg-white rounded-lg shadow-lg p-2 border border-gray-200">
                         <button
+                          onClick={() => handleStartDeplete(item)}
+                          className="p-2 hover:bg-orange-50 rounded transition-colors"
+                          title="Deplete item"
+                        >
+                          <Sliders className="w-4 h-4 text-orange-600 rotate-90" />
+                        </button>
+                        <button
                           onClick={() => handleDeleteItem(item.id, item.item_name)}
                           className="p-2 hover:bg-red-50 rounded transition-colors"
                           title="Remove from inventory"
@@ -479,17 +560,11 @@ const InventoryDashboard = () => {
                           <Trash2 className="w-4 h-4 text-red-600" />
                         </button>
                         <button
+                          onClick={() => handleAddToCart(item)}
                           className="p-2 hover:bg-blue-50 rounded transition-colors"
                           title="Add to cart"
                         >
                           <ShoppingCart className="w-4 h-4 text-blue-600" />
-                        </button>
-                        <button
-                          onClick={() => handleStartDeplete(item)}
-                          className="p-2 hover:bg-orange-50 rounded transition-colors"
-                          title="Deplete item"
-                        >
-                          <Sliders className="w-4 h-4 text-orange-600 rotate-90" />
                         </button>
                       </div>
                     )}

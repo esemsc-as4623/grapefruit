@@ -13,7 +13,8 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql
-      - ./database/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql
+      - ./database/add_cart_table.sql:/docker-entrypoint-initdb.d/02-add-cart.sql
+      - ./database/seed.sql:/docker-entrypoint-initdb.d/03-seed.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U grapefruit"]
       interval: 10s

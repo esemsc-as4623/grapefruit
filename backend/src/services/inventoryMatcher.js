@@ -342,6 +342,8 @@ async function matchItems(parsedItems, userId = 'demo_user', options = {}) {
  */
 async function applyToInventory(matchResults, userId = 'demo_user') {
   try {
+    const consumptionLearner = require('./consumptionLearner');
+    
     const results = {
       updated: [],
       created: [],
@@ -351,9 +353,45 @@ async function applyToInventory(matchResults, userId = 'demo_user') {
     // Update existing items
     for (const item of matchResults.toUpdate) {
       try {
-        const updated = await Inventory.update(item.inventoryItem.id, {
-          quantity: item.newQuantity,
+        const inventoryItem = item.inventoryItem;
+        
+        // Record the purchase event (negative consumption = purchase)
+        await consumptionLearner.recordConsumptionEvent({
+          userId,
+          itemName: inventoryItem.item_name,
+          quantityBefore: inventoryItem.quantity,
+          quantityAfter: item.newQuantity,
+          eventType: 'purchase',
+          source: 'receipt_scan',
+          unit: inventoryItem.unit,
+          category: inventoryItem.category,
+          itemCreatedAt: inventoryItem.created_at,
         });
+        
+        const updated = await Inventory.update(inventoryItem.id, {
+          quantity: item.newQuantity,
+          last_purchase_date: new Date(),
+          last_purchase_quantity: item.quantity,
+        });
+        
+        // Learn and update consumption rate for this item
+        const learningResult = await consumptionLearner.learnConsumptionRate(
+          userId,
+          inventoryItem.item_name,
+          {
+            category: inventoryItem.category,
+            unit: inventoryItem.unit,
+            daysInInventory: (Date.now() - new Date(inventoryItem.created_at).getTime()) / (1000 * 60 * 60 * 24),
+          }
+        );
+        
+        // Update consumption rate if we got a good estimate
+        if (learningResult.rate && learningResult.confidence !== 'very_low') {
+          await Inventory.update(inventoryItem.id, {
+            average_daily_consumption: learningResult.rate,
+          });
+        }
+        
         results.updated.push(updated);
       } catch (error) {
         logger.error(`Error updating item ${item.inventoryItem.id}:`, error);
@@ -374,6 +412,8 @@ async function applyToInventory(matchResults, userId = 'demo_user') {
           unit: item.unit,
           category: item.category,
           average_daily_consumption: 0, // Will be calculated over time
+          last_purchase_date: new Date(),
+          last_purchase_quantity: item.quantity,
         });
         results.created.push(created);
       } catch (error) {

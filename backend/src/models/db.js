@@ -102,12 +102,21 @@ class Inventory {
     } = itemData;
 
     try {
+      // Calculate predicted_runout if consumption rate is provided
+      let calculatedRunout = predicted_runout;
+      if (!calculatedRunout && average_daily_consumption && average_daily_consumption > 0) {
+        const daysUntilRunout = quantity / average_daily_consumption;
+        const runoutDate = new Date();
+        runoutDate.setDate(runoutDate.getDate() + daysUntilRunout);
+        calculatedRunout = runoutDate;
+      }
+
       const result = await db.query(
         `INSERT INTO inventory 
          (user_id, item_name, quantity, unit, category, predicted_runout, average_daily_consumption)
          VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING *`,
-        [user_id, item_name, quantity, unit, category, predicted_runout, average_daily_consumption]
+        [user_id, item_name, quantity, unit, category, calculatedRunout, average_daily_consumption]
       );
       return result.rows[0];
     } catch (error) {
@@ -127,10 +136,34 @@ class Inventory {
       throw new Error('No valid fields to update');
     }
 
-    const setClause = fields.map((field, idx) => `${field} = $${idx + 2}`).join(', ');
-    const values = [id, ...fields.map(field => updates[field])];
-
     try {
+      // Get current item to check for consumption rate
+      const current = await this.findById(id);
+      if (!current) {
+        throw new Error('Item not found');
+      }
+
+      // If quantity is being updated and we have a consumption rate, recalculate predicted_runout
+      if (updates.quantity !== undefined && current.average_daily_consumption && current.average_daily_consumption > 0) {
+        const newQuantity = parseFloat(updates.quantity);
+        const consumptionRate = parseFloat(updates.average_daily_consumption || current.average_daily_consumption);
+        
+        if (consumptionRate > 0) {
+          const daysUntilRunout = newQuantity / consumptionRate;
+          const runoutDate = new Date();
+          runoutDate.setDate(runoutDate.getDate() + daysUntilRunout);
+          updates.predicted_runout = runoutDate;
+          
+          // Add predicted_runout to fields if not already there
+          if (!fields.includes('predicted_runout')) {
+            fields.push('predicted_runout');
+          }
+        }
+      }
+
+      const setClause = fields.map((field, idx) => `${field} = $${idx + 2}`).join(', ');
+      const values = [id, ...fields.map(field => updates[field])];
+
       const result = await db.query(
         `UPDATE inventory 
          SET ${setClause}, 
@@ -531,8 +564,222 @@ class Orders {
   }
 }
 
+/**
+ * Cart Model
+ * Handles shopping cart/list operations before items become orders
+ */
+class Cart {
+  /**
+   * Get all cart items for a user
+   */
+  static async findByUser(userId = 'demo_user') {
+    try {
+      const result = await db.query(
+        'SELECT * FROM cart WHERE user_id = $1 ORDER BY added_at DESC',
+        [userId]
+      );
+      return result.rows;
+    } catch (error) {
+      logger.error('Error fetching cart items:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get single cart item by ID
+   */
+  static async findById(id) {
+    try {
+      const result = await db.query(
+        'SELECT * FROM cart WHERE id = $1',
+        [id]
+      );
+      return result.rows[0];
+    } catch (error) {
+      logger.error('Error fetching cart item by ID:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Find cart item by name and user
+   */
+  static async findByName(userId, itemName) {
+    try {
+      const result = await db.query(
+        'SELECT * FROM cart WHERE user_id = $1 AND item_name = $2',
+        [userId, itemName]
+      );
+      return result.rows[0];
+    } catch (error) {
+      logger.error('Error fetching cart item by name:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Add item to cart (or update quantity if exists)
+   */
+  static async addItem(itemData) {
+    const {
+      user_id = 'demo_user',
+      item_name,
+      quantity,
+      unit,
+      category,
+      estimated_price,
+      notes,
+      source = 'manual',
+    } = itemData;
+
+    try {
+      // Check if item already exists in cart
+      const existing = await this.findByName(user_id, item_name);
+      
+      if (existing) {
+        // Update quantity
+        const newQuantity = parseFloat(existing.quantity) + parseFloat(quantity);
+        const result = await db.query(
+          `UPDATE cart 
+           SET quantity = $1, updated_at = CURRENT_TIMESTAMP
+           WHERE id = $2
+           RETURNING *`,
+          [newQuantity, existing.id]
+        );
+        return result.rows[0];
+      } else {
+        // Insert new item
+        const result = await db.query(
+          `INSERT INTO cart 
+           (user_id, item_name, quantity, unit, category, estimated_price, notes, source)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+           RETURNING *`,
+          [user_id, item_name, quantity, unit, category, estimated_price, notes, source]
+        );
+        return result.rows[0];
+      }
+    } catch (error) {
+      logger.error('Error adding item to cart:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update cart item quantity
+   */
+  static async updateQuantity(id, quantity) {
+    try {
+      const result = await db.query(
+        `UPDATE cart 
+         SET quantity = $2, updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1
+         RETURNING *`,
+        [id, quantity]
+      );
+      return result.rows[0];
+    } catch (error) {
+      logger.error('Error updating cart item quantity:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update cart item
+   */
+  static async update(id, updates) {
+    const allowedFields = ['quantity', 'unit', 'category', 'estimated_price', 'notes'];
+    const fields = Object.keys(updates).filter(key => allowedFields.includes(key));
+    
+    if (fields.length === 0) {
+      throw new Error('No valid fields to update');
+    }
+
+    const setClause = fields.map((field, idx) => `${field} = $${idx + 2}`).join(', ');
+    const values = [id, ...fields.map(field => updates[field])];
+
+    try {
+      const result = await db.query(
+        `UPDATE cart 
+         SET ${setClause}, updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1 
+         RETURNING *`,
+        values
+      );
+      return result.rows[0];
+    } catch (error) {
+      logger.error('Error updating cart item:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Remove item from cart
+   */
+  static async removeItem(id) {
+    try {
+      const result = await db.query(
+        'DELETE FROM cart WHERE id = $1 RETURNING *',
+        [id]
+      );
+      return result.rows[0];
+    } catch (error) {
+      logger.error('Error removing item from cart:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Clear all cart items for a user
+   */
+  static async clearCart(userId = 'demo_user') {
+    try {
+      const result = await db.query(
+        'DELETE FROM cart WHERE user_id = $1 RETURNING *',
+        [userId]
+      );
+      return result.rows;
+    } catch (error) {
+      logger.error('Error clearing cart:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get cart total count
+   */
+  static async getCount(userId = 'demo_user') {
+    try {
+      const result = await db.query(
+        'SELECT COUNT(*) as count FROM cart WHERE user_id = $1',
+        [userId]
+      );
+      return parseInt(result.rows[0].count, 10);
+    } catch (error) {
+      logger.error('Error getting cart count:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get cart total estimated price
+   */
+  static async getTotalPrice(userId = 'demo_user') {
+    try {
+      const result = await db.query(
+        'SELECT SUM(estimated_price * quantity) as total FROM cart WHERE user_id = $1',
+        [userId]
+      );
+      return parseFloat(result.rows[0].total || 0);
+    } catch (error) {
+      logger.error('Error getting cart total price:', error);
+      throw error;
+    }
+  }
+}
+
 module.exports = {
   Inventory,
   Preferences,
   Orders,
+  Cart,
 };

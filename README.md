@@ -34,7 +34,8 @@ curl http://localhost:5000/inventory
 
 ```bash
 # Reseed database with fresh demo data
-cat database/seed.sql | docker exec -i grapefruit-db psql -U grapefruit -d grapefruit
+cat database/seed.sql | docker exec -i grapefruit-db psql -U grapefruit -d grapefruit # for inventory
+cat database/add_cart_table.sql | docker exec -i grapefruit-db psql -U grapefruit -d grapefruit # for cart
 
 # Or reinitialize completely
 docker compose down -v  # Remove volumes
