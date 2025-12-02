@@ -15,16 +15,6 @@ INSERT INTO preferences (user_id, max_spend, approval_mode, auto_approve_limit, 
   "dairy": {
     "preferred": ["Organic Valley", "Horizon"],
     "acceptable": ["Great Value", "Kirkland"],
-    "avoid": ["Generic Brand"]
-  },
-  "pantry": {
-    "preferred": ["Dave''s Killer Bread", "King Arthur"],
-    "acceptable": ["Nature''s Own", "Wonder"],
-    "avoid": []
-  },
-  "beverages": {
-    "preferred": ["Starbucks", "Peet''s"],
-    "acceptable": ["Folgers", "Maxwell House"],
     "avoid": []
   },
   "produce": {
@@ -32,14 +22,19 @@ INSERT INTO preferences (user_id, max_spend, approval_mode, auto_approve_limit, 
     "acceptable": ["Conventional"],
     "avoid": []
   },
-  "frozen": {
-    "preferred": ["Organic", "Name Brand"],
-    "acceptable": ["Generic"],
+  "meat": {
+    "preferred": ["Organic", "Free Range"],
+    "acceptable": ["Conventional"],
     "avoid": []
   },
-  "household": {
-    "preferred": ["Seventh Generation", "Method"],
-    "acceptable": ["Generic", "Store Brand"],
+  "pantry": {
+    "preferred": ["King Arthur", "Barilla"],
+    "acceptable": ["Store Brand"],
+    "avoid": []
+  },
+  "bread": {
+    "preferred": ["Dave''s Killer Bread", "Local Bakery"],
+    "acceptable": ["Nature''s Own", "Wonder"],
     "avoid": []
   }
 }'::jsonb,
@@ -51,10 +46,6 @@ INSERT INTO preferences (user_id, max_spend, approval_mode, auto_approve_limit, 
 -- Starting inventory with varying amounts
 -- No consumption rates specified (all NULL) - will be learned from usage
 -- Items spread across different categories
-
--- BAKERY/BREAD
-INSERT INTO inventory (item_name, quantity, unit, category, predicted_runout, average_daily_consumption, last_purchase_date, last_purchase_quantity, created_at, last_updated) VALUES
-('Bread', 1.5, 'loaf', 'bakery', NULL, NULL, CURRENT_TIMESTAMP - INTERVAL '1 day', 2.0, CURRENT_TIMESTAMP - INTERVAL '1 day', CURRENT_TIMESTAMP - INTERVAL '1 day');
 
 -- DAIRY
 INSERT INTO inventory (item_name, quantity, unit, category, predicted_runout, average_daily_consumption, last_purchase_date, last_purchase_quantity, created_at, last_updated) VALUES
@@ -71,6 +62,10 @@ INSERT INTO inventory (item_name, quantity, unit, category, predicted_runout, av
 ('Ginger', 4.5, 'ounce', 'produce', NULL, NULL, CURRENT_TIMESTAMP - INTERVAL '6 days', 6.0, CURRENT_TIMESTAMP - INTERVAL '6 days', CURRENT_TIMESTAMP - INTERVAL '6 days'),
 ('Tomatoes', 1.5, 'pound', 'produce', NULL, NULL, CURRENT_TIMESTAMP - INTERVAL '3 days', 2.0, CURRENT_TIMESTAMP - INTERVAL '3 days', CURRENT_TIMESTAMP - INTERVAL '3 days'),
 ('Grapes', 1.0, 'pound', 'produce', NULL, NULL, CURRENT_TIMESTAMP - INTERVAL '2 days', 1.5, CURRENT_TIMESTAMP - INTERVAL '2 days', CURRENT_TIMESTAMP - INTERVAL '2 days');
+
+-- BREAD
+INSERT INTO inventory (item_name, quantity, unit, category, predicted_runout, average_daily_consumption, last_purchase_date, last_purchase_quantity, created_at, last_updated) VALUES
+('Bread', 1.5, 'loaf', 'bread', NULL, NULL, CURRENT_TIMESTAMP - INTERVAL '1 day', 2.0, CURRENT_TIMESTAMP - INTERVAL '1 day', CURRENT_TIMESTAMP - INTERVAL '1 day');
 
 -- PANTRY
 INSERT INTO inventory (item_name, quantity, unit, category, predicted_runout, average_daily_consumption, last_purchase_date, last_purchase_quantity, created_at, last_updated) VALUES

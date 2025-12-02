@@ -150,8 +150,8 @@ const CartReview = () => {
       produce: '🥬',
       meat: '🥩',
       pantry: '🥫',
-      beverages: '🥤',
-      snacks: '🍿',
+      bread: '🍞',
+      other: '📦',
     };
     return icons[category?.toLowerCase()] || '📦';
   };

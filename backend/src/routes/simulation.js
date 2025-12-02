@@ -134,9 +134,9 @@ router.post('/day', async (req, res, next) => {
       });
     }
     
-    // Separate items into two groups: those with consumption rates and those without
-    const itemsWithConsumption = items.filter(item => item.average_daily_consumption);
-    const itemsWithoutConsumption = items.filter(item => !item.average_daily_consumption);
+    // Separate items into two groups: those with consumption rates > 0 and those without
+    const itemsWithConsumption = items.filter(item => item.average_daily_consumption > 0);
+    const itemsWithoutConsumption = items.filter(item => !item.average_daily_consumption || item.average_daily_consumption <= 0);
     
     // Deplete items with known consumption rates with realistic variability
     for (const item of itemsWithConsumption) {

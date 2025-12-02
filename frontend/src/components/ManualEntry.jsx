@@ -16,7 +16,7 @@ const ManualEntry = ({ onItemAdded }) => {
 
   // Available options
   const units = ['gallon', 'liter', 'ounce', 'pound', 'count', 'package', 'box', 'can', 'bottle'];
-  const categories = ['dairy', 'produce', 'meat', 'pantry', 'beverages', 'snacks', 'other'];
+  const categories = ['dairy', 'produce', 'meat', 'pantry', 'bread', 'other'];
 
   // Handle input change
   const handleChange = (e) => {

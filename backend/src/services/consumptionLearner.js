@@ -445,14 +445,10 @@ async function estimateFromCategory(userId, category) {
     const categoryDefaults = {
       dairy: 0.5,
       produce: 0.3,
-      pantry: 0.1,
-      frozen: 0.2,
-      beverages: 0.4,
+      pantry: 0.15,
       meat: 0.3,
-      snacks: 0.2,
-      bakery: 0.25,
-      condiments: 0.05,
-      household: 0.1,
+      bread: 0.25,
+      other: 0.2,
     };
 
     const categoryLower = (category || '').toLowerCase();

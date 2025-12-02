@@ -135,9 +135,9 @@ function calculateMatchScore(parsedItem, inventoryItem) {
     if (parsedItem.category === inventoryItem.category) {
       score += 0.2;
     } else if (
-      // Allow some category flexibility (dairy/beverages for milk)
-      (parsedItem.category === 'dairy' && inventoryItem.category === 'beverages') ||
-      (parsedItem.category === 'beverages' && inventoryItem.category === 'dairy')
+      // Allow some category flexibility (pantry/bread)
+      (parsedItem.category === 'pantry' && inventoryItem.category === 'bread') ||
+      (parsedItem.category === 'bread' && inventoryItem.category === 'pantry')
     ) {
       score += 0.1;
     }

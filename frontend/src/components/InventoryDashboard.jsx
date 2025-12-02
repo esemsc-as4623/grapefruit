@@ -250,8 +250,8 @@ const InventoryDashboard = () => {
       produce: { icon: '🥬', color: 'bg-green-50' },
       meat: { icon: '🥩', color: 'bg-red-50' },
       pantry: { icon: '🥫', color: 'bg-yellow-50' },
-      beverages: { icon: '🥤', color: 'bg-purple-50' },
-      snacks: { icon: '🍿', color: 'bg-orange-50' },
+      bread: { icon: '🍞', color: 'bg-amber-50' },
+      other: { icon: '📦', color: 'bg-gray-50' },
     };
     return categories[category?.toLowerCase()] || { icon: '📦', color: 'bg-gray-50' };
   };
@@ -270,22 +270,21 @@ const InventoryDashboard = () => {
     const sorted = [...inventory];
     
     if (sortBy === 'category') {
-      // Define category order: Dairy, Produce, Meat, Pantry, Beverages, Snacks, Other
+      // Define category order: Dairy, Produce, Meat, Pantry, Bread, Other
       const categoryOrder = {
         'dairy': 1,
         'produce': 2,
         'meat': 3,
         'pantry': 4,
-        'beverages': 5,
-        'snacks': 6,
-        'other': 7
+        'bread': 5,
+        'other': 6
       };
       
       sorted.sort((a, b) => {
         const catA = (a.category || 'other').toLowerCase();
         const catB = (b.category || 'other').toLowerCase();
-        const orderA = categoryOrder[catA] || 7; // Default to 'other' if category not found
-        const orderB = categoryOrder[catB] || 7;
+        const orderA = categoryOrder[catA] || 6; // Default to 'other' if category not found
+        const orderB = categoryOrder[catB] || 6;
         return orderA - orderB;
       });
     } else if (sortBy === 'days') {
