@@ -44,9 +44,8 @@ CREATE INDEX IF NOT EXISTS idx_llm_cache_model ON llm_cache(model);
 CREATE INDEX IF NOT EXISTS idx_llm_cache_created_at ON llm_cache(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_llm_cache_expires_at ON llm_cache(expires_at) WHERE expires_at IS NOT NULL;
 
--- Partial index for active cache entries
-CREATE INDEX IF NOT EXISTS idx_llm_cache_active ON llm_cache(cache_key) 
-WHERE expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP;
+-- Index for cache lookups (not partial - PostgreSQL doesn't allow CURRENT_TIMESTAMP in partial index predicates)
+CREATE INDEX IF NOT EXISTS idx_llm_cache_lookup ON llm_cache(cache_key, expires_at);
 
 -- Add comments
 COMMENT ON TABLE llm_cache IS 'Cache for LLM API responses to reduce costs and improve performance';
