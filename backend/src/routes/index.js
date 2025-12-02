@@ -4,6 +4,7 @@ const { Inventory, Preferences, Orders, Cart } = require('../models/db');
 const logger = require('../utils/logger');
 const consumptionLearner = require('../services/consumptionLearner');
 const { suggestPriceAndQuantity } = require('../services/cartPricer');
+const priceService = require('../services/priceService');
 
 const router = express.Router();
 
@@ -515,6 +516,7 @@ router.get('/orders/:id', validateUUID('id'), async (req, res, next) => {
 /**
  * POST /orders
  * Create new order
+ * Now validates and enriches items with real Amazon catalog prices
  */
 router.post('/orders', async (req, res, next) => {
   try {
@@ -522,35 +524,82 @@ router.post('/orders', async (req, res, next) => {
     if (error) {
       return res.status(400).json({ error: { message: error.details[0].message } });
     }
-    
+
     const userId = req.body.user_id || 'demo_user';
-    
+
+    // Enrich order items with prices from catalog (safety check)
+    // This ensures consistent pricing even if frontend passes stale/wrong prices
+    const enrichedItems = await Promise.all(
+      value.items.map(async (item) => {
+        // If item already has a price, validate it against catalog
+        if (item.price) {
+          const priceData = await priceService.getPriceForItem(item.item_name);
+
+          // Allow small price differences (catalog may have updated)
+          const priceDiff = Math.abs(item.price - priceData.price);
+          if (priceDiff > 0.50) {
+            logger.warn('Order item price mismatch', {
+              itemName: item.item_name,
+              sentPrice: item.price,
+              catalogPrice: priceData.price,
+              diff: priceDiff,
+            });
+          }
+
+          return {
+            ...item,
+            price: priceData.price, // Use catalog price (authoritative)
+            brand: priceData.brand,
+          };
+        } else {
+          // Fetch price from catalog
+          const priceData = await priceService.getPriceForItem(item.item_name);
+          return {
+            ...item,
+            price: priceData.price,
+            brand: priceData.brand,
+          };
+        }
+      })
+    );
+
+    // Recalculate totals with validated prices
+    const subtotal = enrichedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const tax = subtotal * 0.08;
+    const shipping = subtotal >= 35 ? 0 : 5.99;
+    const total = subtotal + tax + shipping;
+
     // Check spending cap
     const prefs = await Preferences.findByUser(userId);
-    if (prefs && value.total > prefs.max_spend) {
+    if (prefs && total > prefs.max_spend) {
       return res.status(400).json({
         error: {
           message: 'Order exceeds spending limit',
           limit: prefs.max_spend,
-          total: value.total,
+          total: total,
         },
       });
     }
-    
-    // Create order
+
+    // Create order with validated prices
     const order = await Orders.create({
       ...value,
       user_id: userId,
+      items: enrichedItems,
+      subtotal,
+      tax,
+      shipping,
+      total,
     });
-    
+
     // Auto-approve if conditions met
     if (prefs && prefs.approval_mode === 'auto_all') {
       await Orders.approve(order.id, 'Auto-approved (all orders)');
-    } else if (prefs && prefs.approval_mode === 'auto_under_limit' && value.total <= prefs.auto_approve_limit) {
+    } else if (prefs && prefs.approval_mode === 'auto_under_limit' && total <= prefs.auto_approve_limit) {
       await Orders.approve(order.id, `Auto-approved (under $${prefs.auto_approve_limit})`);
     }
-    
-    logger.info(`Order created: ${order.id}`);
+
+    logger.info(`Order created with validated Amazon prices: ${order.id} - $${total.toFixed(2)}`);
     res.status(201).json(order);
   } catch (error) {
     next(error);
@@ -629,18 +678,24 @@ router.put('/orders/:id/placed', validateUUID('id'), async (req, res, next) => {
 /**
  * GET /cart
  * Get all cart items for user
+ * Now enriched with real-time prices from amazon_catalog
  */
 router.get('/cart', async (req, res, next) => {
   try {
     const userId = req.query.user_id || 'demo_user';
     const items = await Cart.findByUser(userId);
-    const count = await Cart.getCount(userId);
-    const total = await Cart.getTotalPrice(userId);
-    
+
+    // Enrich cart items with current prices from catalog
+    const enrichedItems = await priceService.enrichCartWithPrices(items);
+
+    // Calculate totals with real prices
+    const totals = priceService.calculateCartTotals(enrichedItems);
+
     res.json({
-      items,
-      count,
-      total,
+      items: enrichedItems,
+      count: enrichedItems.length,
+      ...totals,
+      lastUpdated: new Date().toISOString(),
     });
   } catch (error) {
     next(error);
@@ -667,7 +722,14 @@ router.get('/cart/:id', validateUUID('id'), async (req, res, next) => {
 
 /**
  * POST /cart
- * Add item to cart with LLM-suggested pricing and quantity
+ * Add item to cart with intelligent pricing
+ * 
+ * ARCHITECTURE:
+ * 1. LLM (cartPricer) suggests: quantity, unit, category
+ * 2. Catalog (priceService) provides: authoritative price
+ * 3. Combine both for complete cart item
+ * 
+ * This ensures AI-powered convenience with accurate pricing.
  */
 router.post('/cart', async (req, res, next) => {
   try {
@@ -675,16 +737,16 @@ router.post('/cart', async (req, res, next) => {
     if (error) {
       return res.status(400).json({ error: { message: error.details[0].message } });
     }
-    
+
     const userId = req.body.user_id || 'demo_user';
     const useLLMPricing = value.use_llm_pricing !== false; // Default to true
     
     let itemData = { ...value, user_id: userId };
     
-    // If quantity or unit not provided, or if use_llm_pricing is true, get LLM suggestions
-    if (useLLMPricing && (!value.quantity || !value.unit || !value.estimated_price)) {
+    // STEP 1: Get LLM suggestions for quantity, unit, category (if needed)
+    if (useLLMPricing && (!value.quantity || !value.unit)) {
       try {
-        logger.info(`Getting LLM pricing suggestion for: ${value.item_name}`);
+        logger.info(`[LLM] Getting quantity/unit suggestion for: ${value.item_name}`);
         const suggestion = await suggestPriceAndQuantity(value.item_name, value.category);
         
         // Use LLM suggestions for missing fields
@@ -694,27 +756,19 @@ router.post('/cart', async (req, res, next) => {
         if (!value.unit) {
           itemData.unit = suggestion.unit;
         }
-        if (!value.estimated_price) {
-          itemData.estimated_price = suggestion.estimated_price_per_unit;
-        }
         if (!value.category && suggestion.category) {
           itemData.category = suggestion.category;
         }
         
-        // Add LLM metadata to notes if not already present
-        if (!value.notes) {
-          itemData.notes = `Suggested: ${suggestion.suggested_quantity} ${suggestion.unit} @ $${suggestion.estimated_price_per_unit}/${suggestion.unit} (${suggestion.source}, confidence: ${(suggestion.confidence * 100).toFixed(0)}%)`;
-        }
-        
-        logger.info(`Applied LLM suggestions for ${value.item_name}:`, {
+        logger.info(`[LLM] Applied suggestions for ${value.item_name}:`, {
           quantity: itemData.quantity,
           unit: itemData.unit,
-          price: itemData.estimated_price,
+          category: itemData.category,
           confidence: suggestion.confidence,
         });
       } catch (llmError) {
-        // If LLM fails, continue with user-provided values or throw error if required fields missing
-        logger.warn(`LLM pricing failed for ${value.item_name}, using provided values:`, llmError.message);
+        // If LLM fails, require user to provide values
+        logger.warn(`[LLM] Failed for ${value.item_name}, using provided values:`, llmError.message);
         
         if (!value.quantity || !value.unit) {
           return res.status(400).json({ 
@@ -727,10 +781,36 @@ router.post('/cart', async (req, res, next) => {
       }
     }
     
-    const item = await Cart.addItem(itemData);
+    // STEP 2: Fetch authoritative price from amazon_catalog
+    const priceData = await priceService.getPriceForItem(value.item_name);
     
-    logger.info(`Item added to cart: ${item.id} - ${item.item_name}`);
-    res.status(201).json(item);
+    logger.info(`[Catalog] Price for ${value.item_name}:`, {
+      price: priceData.price,
+      brand: priceData.brand,
+      source: priceData.source,
+      matchType: priceData.matchType,
+      confidence: priceData.confidence,
+    });
+
+    // STEP 3: Create cart item with catalog price (override any LLM estimate)
+    const item = await Cart.addItem({
+      ...itemData,
+      estimated_price: priceData.price, // Use catalog price, not LLM estimate
+    });
+
+    // STEP 4: Enrich response with price metadata
+    const enrichedItem = {
+      ...item,
+      price: priceData.price,
+      brand: priceData.brand,
+      catalog_name: priceData.catalogName,
+      priceSource: priceData.source,
+      matchType: priceData.matchType,
+      confidence: priceData.confidence,
+    };
+
+    logger.info(`[Cart] Item added: ${item.id} - ${item.item_name} (${itemData.quantity} ${itemData.unit} @ $${priceData.price})`);
+    res.status(201).json(enrichedItem);
   } catch (error) {
     next(error);
   }

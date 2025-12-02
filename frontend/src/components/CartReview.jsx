@@ -1,38 +1,67 @@
 import React, { useState, useEffect } from 'react';
 import { cartAPI, ordersAPI } from '../services/api';
-import { ShoppingCart, Check, X, Package, Trash2, Plus, Minus, DollarSign, Send } from 'lucide-react';
+import { ShoppingCart, Check, X, Package, Trash2, Plus, Minus, DollarSign, Send, Clock, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
 
 const CartReview = () => {
   const [cartItems, setCartItems] = useState([]);
+  const [pendingOrders, setPendingOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [cartTotal, setCartTotal] = useState(0);
+  const [successMessage, setSuccessMessage] = useState(null);
+  const [cartTotals, setCartTotals] = useState(null); // Now stores full totals object from backend
   const [cartCount, setCartCount] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [newItemName, setNewItemName] = useState('');
   const [addingItem, setAddingItem] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [expandedOrder, setExpandedOrder] = useState(null);
 
   // Load cart items
   const loadCart = async () => {
     try {
-      setLoading(true);
       setError(null);
       const data = await cartAPI.getAll();
       setCartItems(data.items || []);
       setCartCount(data.count || 0);
-      setCartTotal(data.total || 0);
+      // Backend now returns full totals object with subtotal, tax, shipping, total
+      setCartTotals({
+        subtotal: data.subtotal || 0,
+        tax: data.tax || 0,
+        shipping: data.shipping || 0,
+        total: data.total || 0,
+        freeShipping: data.freeShipping || false,
+        shippingThreshold: data.shippingThreshold || 35.00,
+      });
+      setLastUpdated(data.lastUpdated);
     } catch (err) {
       setError(err.response?.data?.error?.message || 'Failed to load cart');
       console.error('Error loading cart:', err);
-    } finally {
-      setLoading(false);
     }
   };
 
+  // Load pending orders
+  const loadPendingOrders = async () => {
+    try {
+      const data = await ordersAPI.getPending();
+      setPendingOrders(data.orders || []);
+    } catch (err) {
+      console.error('Error loading pending orders:', err);
+    }
+  };
+
+  const loadAll = async () => {
+    setLoading(true);
+    await Promise.all([loadCart(), loadPendingOrders()]);
+    setLoading(false);
+  };
+
   useEffect(() => {
-    loadCart();
+    loadAll();
     // Poll for cart updates every 30 seconds
-    const interval = setInterval(loadCart, 30000);
+    const interval = setInterval(() => {
+      loadCart();
+      loadPendingOrders();
+    }, 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -83,27 +112,30 @@ const CartReview = () => {
       return;
     }
 
+    if (!cartTotals) {
+      setError('Cart totals not calculated');
+      return;
+    }
+
     try {
       setSubmitting(true);
       setError(null);
 
-      // Prepare order data
+      // Prepare order data using enriched cart items with real Amazon prices
       const orderItems = cartItems.map(item => ({
         item_name: item.item_name,
         quantity: parseFloat(item.quantity),
         unit: item.unit,
-        price: parseFloat(item.estimated_price || 5.99), // Default price if not set
-        brand: 'Generic', // Could be enhanced with brand selection
+        price: parseFloat(item.price || item.estimated_price || 5.99), // Use real catalog price
+        brand: item.brand || 'Generic', // Use catalog brand
       }));
 
-      const subtotal = orderItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-      const tax = subtotal * 0.08; // 8% tax
-      const shipping = subtotal > 35 ? 0 : 5.99; // Free shipping over $35
-      const total = subtotal + tax + shipping;
+      // Use backend-calculated totals (already includes real Amazon prices)
+      const { subtotal, tax, shipping, total } = cartTotals;
 
       // Create order
       await ordersAPI.create({
-        vendor: 'walmart', // Default vendor, could be selectable
+        vendor: 'amazon', // Now using Amazon catalog prices
         items: orderItems,
         subtotal,
         tax,
@@ -114,8 +146,10 @@ const CartReview = () => {
       // Clear cart after successful order
       await cartAPI.clearCart();
       await loadCart();
+      await loadPendingOrders();
 
-      alert('Order created successfully! Check the Orders tab to approve.');
+      setSuccessMessage('Order created successfully! It is now pending approval.');
+      setTimeout(() => setSuccessMessage(null), 5000);
     } catch (err) {
       setError(err.response?.data?.error?.message || 'Failed to create order');
     } finally {
@@ -154,6 +188,31 @@ const CartReview = () => {
     }
   };
 
+  // Approve order
+  const handleApproveOrder = async (orderId) => {
+    try {
+      await ordersAPI.approve(orderId);
+      await loadPendingOrders();
+      setSuccessMessage('Order approved successfully!');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err) {
+      setError(err.response?.data?.error?.message || 'Failed to approve order');
+    }
+  };
+
+  // Reject order
+  const handleRejectOrder = async (orderId) => {
+    if (!window.confirm('Are you sure you want to reject this order?')) return;
+    try {
+      await ordersAPI.reject(orderId);
+      await loadPendingOrders();
+      setSuccessMessage('Order rejected.');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err) {
+      setError(err.response?.data?.error?.message || 'Failed to reject order');
+    }
+  };
+
   // Get step size based on unit
   const getStepSize = (unit) => {
     const wholeNumberUnits = ['count', 'can'];
@@ -185,19 +244,24 @@ const CartReview = () => {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-4xl mx-auto space-y-8">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-3xl font-bold text-gray-900">Shopping Cart</h2>
+          <h2 className="text-3xl font-bold text-gray-900">Orders & Cart</h2>
           <p className="text-gray-600 mt-1">
             {cartCount} item{cartCount !== 1 ? 's' : ''} in cart
-            {cartTotal > 0 && ` • Est. ${formatCurrency(cartTotal)}`}
+            {cartTotals && cartTotals.total > 0 && ` • Est. ${formatCurrency(cartTotals.total)}`}
+            {lastUpdated && (
+              <span className="text-xs text-gray-500 ml-2">
+                • Prices updated {new Date(lastUpdated).toLocaleTimeString()}
+              </span>
+            )}
           </p>
         </div>
         <div className="flex gap-3">
           <button
-            onClick={loadCart}
+            onClick={() => { loadCart(); loadPendingOrders(); }}
             className="px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
           >
             Refresh
@@ -213,9 +277,18 @@ const CartReview = () => {
         </div>
       </div>
 
+      {/* Success Message */}
+      {successMessage && (
+        <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg flex items-center gap-2">
+          <Check className="w-5 h-5" />
+          {successMessage}
+        </div>
+      )}
+
       {/* Error Message */}
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg">
+        <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg flex items-center gap-2">
+          <AlertCircle className="w-5 h-5" />
           {error}
         </div>
       )}
@@ -250,6 +323,83 @@ const CartReview = () => {
           </button>
         </form>
       </div>
+      {/* Pending Orders Section */}
+      {pendingOrders.length > 0 && (
+        <div className="space-y-4">
+          <h3 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+            <Clock className="w-5 h-5 text-orange-500" />
+            Pending Orders ({pendingOrders.length})
+          </h3>
+          <div className="space-y-4">
+            {pendingOrders.map((order) => (
+              <div key={order.id} className="bg-white border border-orange-200 rounded-lg overflow-hidden shadow-sm">
+                <div className="p-4 bg-orange-50 flex justify-between items-center cursor-pointer"
+                     onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>
+                  <div className="flex items-center gap-4">
+                    <div className="bg-orange-100 p-2 rounded-full">
+                      <Package className="w-5 h-5 text-orange-600" />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-gray-900">
+                        Order #{order.id.slice(0, 8)}
+                      </div>
+                      <div className="text-sm text-gray-600">
+                        {new Date(order.created_at).toLocaleDateString()} • {order.items.length} items • {formatCurrency(order.total)}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="px-3 py-1 bg-orange-100 text-orange-700 rounded-full text-xs font-medium uppercase tracking-wide">
+                      Needs Approval
+                    </span>
+                    {expandedOrder === order.id ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
+                  </div>
+                </div>
+                
+                {/* Expanded Details */}
+                {expandedOrder === order.id && (
+                  <div className="p-4 border-t border-orange-100">
+                    <div className="space-y-2 mb-4">
+                      {order.items.map((item, idx) => (
+                        <div key={idx} className="flex justify-between text-sm">
+                          <span className="text-gray-600">{item.quantity}x {item.item_name}</span>
+                          <span className="text-gray-900">{formatCurrency(item.price * item.quantity)}</span>
+                        </div>
+                      ))}
+                      <div className="border-t border-gray-100 pt-2 mt-2 flex justify-between font-medium">
+                        <span>Total</span>
+                        <span>{formatCurrency(order.total)}</span>
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-3">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleRejectOrder(order.id); }}
+                        className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg text-sm font-medium transition-colors"
+                      >
+                        Reject
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleApproveOrder(order.id); }}
+                        className="px-4 py-2 bg-green-600 text-white hover:bg-green-700 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                      >
+                        <Check className="w-4 h-4" />
+                        Approve Order
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="border-t border-gray-200 my-6"></div>
+
+      <h3 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+        <ShoppingCart className="w-5 h-5 text-gray-700" />
+        Current Cart
+      </h3>
 
       {/* Empty Cart State */}
       {cartItems.length === 0 ? (
@@ -266,7 +416,8 @@ const CartReview = () => {
           <div className="bg-white border border-gray-200 rounded-lg divide-y divide-gray-200">
             {cartItems.map((item) => {
               const stepSize = getStepSize(item.unit);
-              const itemPrice = parseFloat(item.estimated_price || 5.99);
+              // Use enriched price from backend (includes catalog lookup)
+              const itemPrice = parseFloat(item.price || item.estimated_price || 5.99);
               const itemTotal = itemPrice * parseFloat(item.quantity);
 
               return (
@@ -279,6 +430,19 @@ const CartReview = () => {
                     <div className="flex-1 flex items-center gap-3">
                       <div className="flex-1">
                         <h3 className="font-semibold text-gray-900">{item.item_name}</h3>
+                        <div className="flex items-center gap-3 text-sm text-gray-600 mt-1">
+                          <span className="capitalize">{item.category || 'Other'}</span>
+                          {item.brand && item.brand !== 'Generic' && (
+                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+                              {item.brand}
+                            </span>
+                          )}
+                          {item.priceChanged && (
+                            <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded flex items-center gap-1">
+                              ℹ️ Price updated: {formatCurrency(item.cachedPrice)} → {formatCurrency(item.price)}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
 
@@ -333,71 +497,60 @@ const CartReview = () => {
           {/* Cart Summary and Checkout */}
           <div className="bg-white border border-gray-200 rounded-lg p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Order Summary</h3>
-            
-            {/* Calculate totals */}
-            {(() => {
-              const subtotal = cartItems.reduce((sum, item) => {
-                const price = parseFloat(item.estimated_price || 5.99);
-                const qty = parseFloat(item.quantity);
-                return sum + (price * qty);
-              }, 0);
-              const tax = subtotal * 0.08;
-              const shipping = subtotal > 35 ? 0 : 5.99;
-              const total = subtotal + tax + shipping;
 
-              return (
-                <div className="space-y-3">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Subtotal ({cartCount} items):</span>
-                    <span className="text-gray-900 font-medium">{formatCurrency(subtotal)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Estimated Tax (8%):</span>
-                    <span className="text-gray-900 font-medium">{formatCurrency(tax)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Shipping:</span>
-                    <span className="text-gray-900 font-medium">
-                      {shipping === 0 ? 'FREE' : formatCurrency(shipping)}
-                    </span>
-                  </div>
-                  {subtotal < 35 && (
-                    <p className="text-xs text-blue-600">
-                      Add {formatCurrency(35 - subtotal)} more for free shipping!
-                    </p>
-                  )}
-                  <div className="border-t pt-3 flex justify-between">
-                    <span className="text-lg font-bold text-gray-900">Estimated Total:</span>
-                    <span className="text-2xl font-bold text-grapefruit-600">
-                      {formatCurrency(total)}
-                    </span>
-                  </div>
-
-                  {/* Create Order Button */}
-                  <button
-                    onClick={handleCreateOrder}
-                    disabled={submitting}
-                    className="w-full mt-4 px-6 py-3 bg-grapefruit-500 text-white rounded-lg hover:bg-grapefruit-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-lg font-semibold"
-                  >
-                    {submitting ? (
-                      <>
-                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                        Creating Order...
-                      </>
-                    ) : (
-                      <>
-                        <Send className="w-5 h-5" />
-                        Create Order
-                      </>
-                    )}
-                  </button>
-                  
-                  <p className="text-xs text-gray-500 text-center mt-2">
-                    Order will be sent for approval before purchase
-                  </p>
+            {/* Use backend-calculated totals (with real Amazon prices) */}
+            {cartTotals && (
+              <div className="space-y-3">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Subtotal ({cartCount} items):</span>
+                  <span className="text-gray-900 font-medium">{formatCurrency(cartTotals.subtotal)}</span>
                 </div>
-              );
-            })()}
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Estimated Tax (8%):</span>
+                  <span className="text-gray-900 font-medium">{formatCurrency(cartTotals.tax)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Shipping:</span>
+                  <span className="text-gray-900 font-medium">
+                    {cartTotals.freeShipping ? 'FREE' : formatCurrency(cartTotals.shipping)}
+                  </span>
+                </div>
+                {!cartTotals.freeShipping && cartTotals.shippingThreshold && (
+                  <p className="text-xs text-blue-600">
+                    Add {formatCurrency(cartTotals.shippingThreshold - cartTotals.subtotal)} more for free shipping!
+                  </p>
+                )}
+                <div className="border-t pt-3 flex justify-between">
+                  <span className="text-lg font-bold text-gray-900">Estimated Total:</span>
+                  <span className="text-2xl font-bold text-grapefruit-600">
+                    {formatCurrency(cartTotals.total)}
+                  </span>
+                </div>
+
+                {/* Create Order Button */}
+                <button
+                  onClick={handleCreateOrder}
+                  disabled={submitting}
+                  className="w-full mt-4 px-6 py-3 bg-grapefruit-500 text-white rounded-lg hover:bg-grapefruit-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-lg font-semibold"
+                >
+                  {submitting ? (
+                    <>
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                      Creating Order...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-5 h-5" />
+                      Create Order
+                    </>
+                  )}
+                </button>
+
+                <p className="text-xs text-gray-500 text-center mt-2">
+                  Order will be sent for approval before purchase
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Help Text */}

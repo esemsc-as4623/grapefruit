@@ -12,9 +12,14 @@ services:
       - "${DB_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      # Database initialization scripts (run in alphabetical order)
       - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql
       - ./database/add_cart_table.sql:/docker-entrypoint-initdb.d/02-add-cart.sql
-      - ./database/seed.sql:/docker-entrypoint-initdb.d/03-seed.sql
+      - ./database/add_consumption_history.sql:/docker-entrypoint-initdb.d/03-add-consumption.sql
+      - ./database/migration-auto-ordering.sql:/docker-entrypoint-initdb.d/04-auto-ordering.sql
+      - ./database/seed.sql:/docker-entrypoint-initdb.d/05-seed.sql
+      # Amazon catalog must be seeded AFTER auto-ordering migration creates the table
+      - ./database/seed-grocery-catalog.sql:/docker-entrypoint-initdb.d/06-seed-grocery-catalog.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U grapefruit"]
       interval: 10s

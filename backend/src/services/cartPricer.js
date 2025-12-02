@@ -1,6 +1,21 @@
 /**
  * Cart Pricer Service
- * Uses LLM to suggest reasonable quantities and prices for grocery items
+ * 
+ * PURPOSE: Uses LLM to suggest reasonable QUANTITIES and UNITS for grocery items
+ * 
+ * RESPONSIBILITY SEPARATION:
+ * - cartPricer.js (THIS FILE): Suggests quantity, unit, category using AI intelligence
+ * - priceService.js: Fetches authoritative prices from amazon_catalog database
+ * 
+ * WHY BOTH?
+ * - LLM provides context-aware suggestions ("buy 1 gallon of milk for a household")
+ * - Catalog provides accurate, real-time pricing (no hallucination)
+ * - Cost-effective: LLM only for intelligence, not price lookups
+ * 
+ * WORKFLOW:
+ * 1. cartPricer suggests: quantity=1, unit="gallon", category="DAIRY"
+ * 2. priceService fetches: price=$4.29 from amazon_catalog
+ * 3. Backend combines both for final cart item
  */
 
 const { callASICloud } = require('./llmClient');
@@ -8,10 +23,14 @@ const { LLM_CONFIG, getCartPricingPrompt } = require('../config/llm');
 const logger = require('../utils/logger');
 
 /**
- * Suggest quantity and price for a cart item using LLM
+ * Suggest quantity, unit, and category for a cart item using LLM
+ * 
+ * NOTE: Price is estimated by LLM but should be OVERRIDDEN by priceService
+ * in the backend route handler. The LLM price is only for fallback/testing.
+ * 
  * @param {string} itemName - Name of the grocery item
  * @param {string} category - Optional category hint
- * @returns {Promise<Object>} Suggested quantity, price, and metadata
+ * @returns {Promise<Object>} Suggested quantity, unit, category, and estimated price
  */
 async function suggestPriceAndQuantity(itemName, category = null) {
   try {
@@ -46,24 +65,29 @@ async function suggestPriceAndQuantity(itemName, category = null) {
       return getFallbackPricing(itemName, category);
     }
     
-    logger.info(`LLM pricing suggestion for ${itemName}:`, {
+    logger.info(`LLM suggestion for ${itemName}:`, {
       quantity: parsed.suggested_quantity,
       unit: parsed.unit,
-      price: parsed.estimated_price_per_unit,
-      total: parsed.total_price,
       category: parsed.category,
       confidence: parsed.confidence,
+      note: 'Price will be fetched from catalog, not used from LLM'
     });
     
     return {
+      // PRIMARY OUTPUTS (what we actually use from LLM)
       suggested_quantity: parsed.suggested_quantity,
       unit: parsed.unit,
-      estimated_price_per_unit: parsed.estimated_price_per_unit,
-      total_price: parsed.total_price,
       category: parsed.category || category, // Use LLM category or fallback to provided
+      
+      // METADATA (for logging/debugging)
       confidence: parsed.confidence,
       reasoning: parsed.reasoning,
       source: 'llm',
+      
+      // DEPRECATED (use priceService instead)
+      // These are kept for backward compatibility but should be overridden
+      estimated_price_per_unit: parsed.estimated_price_per_unit,
+      total_price: parsed.total_price,
     };
     
   } catch (error) {
