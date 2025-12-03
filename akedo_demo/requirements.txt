@@ -1,6 +1,7 @@
 # Core
 fastapi
 uvicorn
+python-multipart
 streamlit
 langchain
 langchain-openai
@@ -17,4 +18,5 @@ imutils
 pytesseract          # Fastest, requires: brew install tesseract
 easyocr              # Better accuracy, larger model
 # paddlepaddle       # Uncomment for PaddleOCR (best accuracy)
-# paddleocr          # Uncomment for PaddleOCR
+paddleocr            # Uncomment for PaddleOCR
+google-generativeai>=0.3.0
