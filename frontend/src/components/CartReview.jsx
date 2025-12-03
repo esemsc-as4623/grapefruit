@@ -4,7 +4,7 @@ import { ShoppingCart, Check, X, Package, Trash2, Plus, Minus, DollarSign, Send,
 
 const CartReview = () => {
   const [cartItems, setCartItems] = useState([]);
-  const [pendingOrders, setPendingOrders] = useState([]);
+  const [ordersInTransit, setOrdersInTransit] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
@@ -39,19 +39,19 @@ const CartReview = () => {
     }
   };
 
-  // Load pending orders
-  const loadPendingOrders = async () => {
+  // Load orders in transit
+  const loadOrdersInTransit = async () => {
     try {
-      const data = await ordersAPI.getPending();
-      setPendingOrders(data.orders || []);
+      const data = await ordersAPI.getInTransit();
+      setOrdersInTransit(data.orders || []);
     } catch (err) {
-      console.error('Error loading pending orders:', err);
+      console.error('Error loading orders in transit:', err);
     }
   };
 
   const loadAll = async () => {
     setLoading(true);
-    await Promise.all([loadCart(), loadPendingOrders()]);
+    await Promise.all([loadCart(), loadOrdersInTransit()]);
     setLoading(false);
   };
 
@@ -60,7 +60,7 @@ const CartReview = () => {
     // Poll for cart updates every 30 seconds
     const interval = setInterval(() => {
       loadCart();
-      loadPendingOrders();
+      loadOrdersInTransit();
     }, 30000);
     return () => clearInterval(interval);
   }, []);
@@ -121,14 +121,19 @@ const CartReview = () => {
       setSubmitting(true);
       setError(null);
 
-      // Prepare order data using enriched cart items with real Amazon prices
-      const orderItems = cartItems.map(item => ({
-        item_name: item.item_name,
-        quantity: parseFloat(item.quantity),
-        unit: item.unit,
-        price: parseFloat(item.price || item.estimated_price || 5.99), // Use real catalog price
-        brand: item.brand || 'Generic', // Use catalog brand
-      }));
+      // Prepare order data using cart items with their actual displayed prices
+      const orderItems = cartItems.map(item => {
+        // Use the same price calculation logic as displayed in the cart
+        const displayedPrice = parseFloat(item.price || item.estimated_price || item.cached_price || 5.99);
+        
+        return {
+          item_name: item.item_name,
+          quantity: parseFloat(item.quantity),
+          unit: item.unit,
+          price: displayedPrice, // Use the exact same price shown in cart
+          brand: item.brand || 'Generic',
+        };
+      });
 
       // Use backend-calculated totals (already includes real Amazon prices)
       const { subtotal, tax, shipping, total } = cartTotals;
@@ -146,9 +151,9 @@ const CartReview = () => {
       // Clear cart after successful order
       await cartAPI.clearCart();
       await loadCart();
-      await loadPendingOrders();
+      await loadOrdersInTransit();
 
-      setSuccessMessage('Order created successfully! It is now pending approval.');
+      setSuccessMessage('Order placed successfully!');
       setTimeout(() => setSuccessMessage(null), 5000);
     } catch (err) {
       setError(err.response?.data?.error?.message || 'Failed to create order');
@@ -192,7 +197,7 @@ const CartReview = () => {
   const handleMarkArrived = async (orderId) => {
     try {
       await ordersAPI.markDelivered(orderId);
-      await Promise.all([loadPendingOrders(), loadCart()]);
+      await Promise.all([loadOrdersInTransit(), loadCart()]);
       setSuccessMessage('Order marked as arrived! Items added to inventory.');
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
@@ -246,7 +251,7 @@ const CartReview = () => {
         </div>
         <div className="flex gap-3">
           <button
-            onClick={() => { loadCart(); loadPendingOrders(); }}
+            onClick={() => { loadCart(); loadOrdersInTransit(); }}
             className="px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
           >
             Refresh
@@ -309,14 +314,14 @@ const CartReview = () => {
         </form>
       </div>
       {/* Track Orders Section */}
-      {pendingOrders.length > 0 && (
+      {ordersInTransit.length > 0 && (
         <div className="space-y-4">
           <h3 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
             <Clock className="w-5 h-5 text-orange-500" />
-            Track Orders ({pendingOrders.length})
+            Track Orders ({ordersInTransit.length})
           </h3>
           <div className="space-y-4">
-            {pendingOrders.map((order) => (
+            {ordersInTransit.map((order) => (
               <div key={order.id} className="bg-white border border-orange-200 rounded-lg overflow-hidden shadow-sm">
                 <div className="p-4 bg-orange-50 flex justify-between items-center cursor-pointer"
                      onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}>
@@ -345,12 +350,25 @@ const CartReview = () => {
                 {expandedOrder === order.id && (
                   <div className="p-4 border-t border-orange-100">
                     <div className="space-y-2 mb-4">
-                      {order.items.map((item, idx) => (
-                        <div key={idx} className="flex justify-between text-sm">
-                          <span className="text-gray-600">{item.quantity}x {item.item_name}</span>
-                          <span className="text-gray-900">{formatCurrency(item.price * item.quantity)}</span>
-                        </div>
-                      ))}
+                      {order.items.map((item, idx) => {
+                        const quantity = parseFloat(item.quantity);
+                        const pricePerUnit = parseFloat(item.price);
+                        const itemSubtotal = quantity * pricePerUnit;
+                        
+                        // Format quantity based on unit type
+                        const wholeNumberUnits = ['count', 'can', 'each', 'box', 'package', 'bottle'];
+                        const isWholeNumber = wholeNumberUnits.includes(item.unit?.toLowerCase());
+                        const formattedQuantity = quantity.toFixed(isWholeNumber ? 0 : 2);
+                        
+                        return (
+                          <div key={idx} className="flex justify-between text-sm">
+                            <span className="text-gray-600">
+                              {formattedQuantity}x {item.item_name} @ {formatCurrency(pricePerUnit)}
+                            </span>
+                            <span className="text-gray-900 font-medium">{formatCurrency(itemSubtotal)}</span>
+                          </div>
+                        );
+                      })}
                       <div className="border-t border-gray-100 pt-2 mt-2 flex justify-between font-medium">
                         <span>Total</span>
                         <span>{formatCurrency(order.total)}</span>
@@ -395,8 +413,8 @@ const CartReview = () => {
           <div className="bg-white border border-gray-200 rounded-lg divide-y divide-gray-200">
             {cartItems.map((item) => {
               const stepSize = getStepSize(item.unit);
-              // Use enriched price from backend (includes catalog lookup)
-              const itemPrice = parseFloat(item.price || item.estimated_price || 5.99);
+              // Use the same price logic consistently throughout
+              const itemPrice = parseFloat(item.price || item.estimated_price || item.cached_price || 5.99);
               const itemTotal = itemPrice * parseFloat(item.quantity);
 
               return (

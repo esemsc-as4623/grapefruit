@@ -153,14 +153,14 @@ function parseCartPricingResponse(response) {
     
     const parsed = JSON.parse(cleaned);
     
-    // Validate required fields (including category)
+    // Validate required fields (new order: price, unit, quantity, confidence, reasoning, category)
     if (
-      typeof parsed.suggested_quantity !== 'number' ||
-      typeof parsed.unit !== 'string' ||
-      typeof parsed.category !== 'string' ||
       typeof parsed.estimated_price_per_unit !== 'number' ||
-      typeof parsed.total_price !== 'number' ||
-      typeof parsed.confidence !== 'number'
+      typeof parsed.unit !== 'string' ||
+      typeof parsed.suggested_quantity !== 'number' ||
+      typeof parsed.confidence !== 'number' ||
+      typeof parsed.reasoning !== 'string' ||
+      typeof parsed.category !== 'string'
     ) {
       logger.warn('Invalid LLM pricing response structure:', parsed);
       return null;
@@ -173,13 +173,15 @@ function parseCartPricingResponse(response) {
     if (
       parsed.suggested_quantity <= 0 ||
       parsed.estimated_price_per_unit < 0 ||
-      parsed.total_price < 0 ||
       parsed.confidence < 0 ||
       parsed.confidence > 1
     ) {
       logger.warn('Invalid LLM pricing values:', parsed);
       return null;
     }
+    
+    // Compute total price programmatically (quantity × price)
+    parsed.total_price = parseFloat((parsed.suggested_quantity * parsed.estimated_price_per_unit).toFixed(2));
     
     return parsed;
     
@@ -381,13 +383,13 @@ function getFallbackPricing(itemName, category = null) {
   }
   
   // Calculate total
-  const totalPrice = quantity * pricePerUnit;
+  const totalPrice = parseFloat((quantity * pricePerUnit).toFixed(2));
   
   return {
     suggested_quantity: quantity,
     unit: unit,
     estimated_price_per_unit: pricePerUnit,
-    total_price: parseFloat(totalPrice.toFixed(2)),
+    total_price: totalPrice,
     category: cat,
     confidence: 0.6, // Lower confidence for fallback
     reasoning: 'Rule-based fallback pricing (LLM unavailable)',

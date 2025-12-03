@@ -205,8 +205,8 @@ const ReceiptReview = ({ receiptData, onApplied, onCancel }) => {
                       <option value="dairy">Dairy</option>
                       <option value="produce">Produce</option>
                       <option value="meat">Meat</option>
-                      <option value="pantry">Pantry</option>
                       <option value="bread">Bread</option>
+                      <option value="pantry">Pantry</option>
                       <option value="other">Other</option>
                     </select>
                   ) : (

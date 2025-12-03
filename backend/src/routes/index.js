@@ -481,24 +481,6 @@ router.get('/orders', async (req, res, next) => {
 });
 
 /**
- * GET /orders/pending
- * Get pending orders awaiting approval
- */
-router.get('/orders/pending', async (req, res, next) => {
-  try {
-    const userId = req.query.user_id || 'demo_user';
-    const orders = await Orders.findPending(userId);
-    
-    res.json({
-      orders,
-      count: orders.length,
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-/**
  * GET /orders/:id
  * Get single order
  */
@@ -518,8 +500,7 @@ router.get('/orders/:id', validateUUID('id'), async (req, res, next) => {
 
 /**
  * POST /orders
- * Create new order
- * Now validates and enriches items with real Amazon catalog prices
+ * Create new order preserving exact cart prices and totals
  */
 router.post('/orders', async (req, res, next) => {
   try {
@@ -530,49 +511,32 @@ router.post('/orders', async (req, res, next) => {
 
     const userId = req.body.user_id || 'demo_user';
 
-    // Enrich order items with prices from catalog (safety check)
-    // This ensures consistent pricing even if frontend passes stale/wrong prices
-    const enrichedItems = await Promise.all(
-      value.items.map(async (item) => {
-        // If item already has a price, validate it against catalog
-        if (item.price) {
-          const priceData = await priceService.getPriceForItem(item.item_name);
+    // Preserve cart items exactly as they were displayed to the user
+    // Do NOT override prices - use the prices that were shown in cart
+    const enrichedItems = value.items.map((item) => {
+      // Just ensure we have all required fields, but keep the displayed prices
+      return {
+        item_name: item.item_name,
+        quantity: item.quantity,
+        unit: item.unit,
+        price: item.price, // Keep the exact price that was displayed in cart
+        brand: item.brand || 'Generic',
+      };
+    });
 
-          // Allow small price differences (catalog may have updated)
-          const priceDiff = Math.abs(item.price - priceData.price);
-          if (priceDiff > 0.50) {
-            logger.warn('Order item price mismatch', {
-              itemName: item.item_name,
-              sentPrice: item.price,
-              catalogPrice: priceData.price,
-              diff: priceDiff,
-            });
-          }
+    // Use the totals as calculated by frontend (based on displayed cart prices)
+    // This ensures the Track Orders section shows the exact same totals the user saw
+    const subtotal = value.subtotal;
+    const tax = value.tax || 0;
+    const shipping = value.shipping || 0;
+    const total = value.total;
 
-          return {
-            ...item,
-            price: priceData.price, // Use catalog price (authoritative)
-            brand: priceData.brand,
-          };
-        } else {
-          // Fetch price from catalog
-          const priceData = await priceService.getPriceForItem(item.item_name);
-          return {
-            ...item,
-            price: priceData.price,
-            brand: priceData.brand,
-          };
-        }
-      })
-    );
+    // Generate tracking information for immediate placement
+    const trackingNumber = 'AMZN-' + Math.random().toString(36).substr(2, 12).toUpperCase();
+    const deliveryDate = new Date();
+    deliveryDate.setDate(deliveryDate.getDate() + 3 + Math.floor(Math.random() * 3)); // 3-5 days
 
-    // Recalculate totals with validated prices
-    const subtotal = enrichedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-    const tax = subtotal * 0.08;
-    const shipping = subtotal >= 35 ? 0 : 5.99;
-    const total = subtotal + tax + shipping;
-
-    // Create order with validated prices
+    // Create order with 'placed' status (skip approval)
     const order = await Orders.create({
       ...value,
       user_id: userId,
@@ -581,50 +545,17 @@ router.post('/orders', async (req, res, next) => {
       tax,
       shipping,
       total,
+      status: 'placed', // Immediately place the order
+      vendor_order_id: trackingNumber,
+      tracking_number: trackingNumber,
+      delivery_date: deliveryDate.toISOString().split('T')[0], // YYYY-MM-DD format
     });
 
-    logger.info(`Order created with validated Amazon prices: ${order.id} - $${total.toFixed(2)}`);
-    res.status(201).json(order);
-  } catch (error) {
-    next(error);
-  }
-});
-
-/**
- * PUT /orders/:id/approve
- * Approve pending order
- */
-router.put('/orders/:id/approve', validateUUID('id'), async (req, res, next) => {
-  try {
-    const notes = req.body.notes || null;
-    const order = await Orders.approve(req.params.id, notes);
-    
-    if (!order) {
-      return res.status(404).json({ error: { message: 'Order not found or already processed' } });
-    }
-    
-    logger.info(`Order approved: ${order.id}`);
-    res.json(order);
-  } catch (error) {
-    next(error);
-  }
-});
-
-/**
- * PUT /orders/:id/reject
- * Reject pending order
- */
-router.put('/orders/:id/reject', validateUUID('id'), async (req, res, next) => {
-  try {
-    const notes = req.body.notes || null;
-    const order = await Orders.reject(req.params.id, notes);
-    
-    if (!order) {
-      return res.status(404).json({ error: { message: 'Order not found or already processed' } });
-    }
-    
-    logger.info(`Order rejected: ${order.id}`);
-    res.json(order);
+    logger.info(`Order placed immediately with tracking ${trackingNumber}: ${order.id} - $${total.toFixed(2)}`);
+    res.status(201).json({
+      ...order,
+      message: 'Order placed successfully and is now in transit!',
+    });
   } catch (error) {
     next(error);
   }
@@ -657,11 +588,12 @@ router.put('/orders/:id/placed', validateUUID('id'), async (req, res, next) => {
 
 /**
  * PUT /orders/:id/delivered
- * Mark order as delivered and add items to inventory
+ * Mark order as delivered and add items to inventory using intelligent item matching
  */
 router.put('/orders/:id/delivered', validateUUID('id'), async (req, res, next) => {
   try {
     const orderId = req.params.id;
+    const userId = req.body.user_id || 'demo_user';
     
     // Get the order first to access its items
     const order = await Orders.findById(orderId);
@@ -678,67 +610,114 @@ router.put('/orders/:id/delivered', validateUUID('id'), async (req, res, next) =
     const updatedOrder = await Orders.markDelivered(orderId);
     
     if (!updatedOrder) {
-      return res.status(400).json({ error: { message: 'Failed to mark order as delivered. Order must be in pending status.' } });
+      return res.status(400).json({ error: { message: 'Failed to mark order as delivered. Order must be in placed status.' } });
     }
     
-    // Add each item to inventory
-    const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
-    const inventoryUpdates = [];
+    // Parse order items and use inventory matcher for intelligent matching
+    const rawItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
     
-    for (const item of items) {
-      try {
-        // Try to find existing inventory item by name and unit
-        let inventoryItem = await Inventory.findByNameAndUnit(
-          order.user_id, 
-          item.item_name, 
-          item.unit
-        );
-        
-        if (inventoryItem) {
-          // Item exists - add quantity
-          const updated = await Inventory.addQuantity(
-            inventoryItem.id, 
-            item.quantity,
-            inventoryItem.average_daily_consumption
-          );
-          inventoryUpdates.push({
-            action: 'updated',
-            item: updated,
-          });
-          logger.info(`Added ${item.quantity} ${item.unit} to existing inventory item: ${item.item_name}`);
-        } else {
-          // Item doesn't exist - create new
-          const newItem = await Inventory.create({
-            user_id: order.user_id,
-            item_name: item.item_name,
-            quantity: item.quantity,
-            unit: item.unit,
-            category: item.category || 'others',
-          });
-          inventoryUpdates.push({
-            action: 'created',
-            item: newItem,
-          });
-          logger.info(`Created new inventory item: ${item.item_name} (${item.quantity} ${item.unit})`);
-        }
-      } catch (itemError) {
-        logger.error(`Error adding item ${item.item_name} to inventory:`, itemError);
-        inventoryUpdates.push({
-          action: 'failed',
-          item_name: item.item_name,
-          error: itemError.message,
-        });
+    logger.info('Debug - Raw order.items:', rawItems);
+    logger.info('Debug - Items is array?', Array.isArray(rawItems));
+    logger.info('Debug - typeof rawItems:', typeof rawItems);
+    logger.info('Debug - rawItems !== null:', rawItems !== null);
+    
+    // Handle both array and object formats (PostgreSQL JSON can sometimes store arrays as objects)
+    let items;
+    if (Array.isArray(rawItems)) {
+      items = rawItems;
+      logger.info('Debug - Using rawItems as array');
+    } else if (typeof rawItems === 'object' && rawItems !== null) {
+      // Convert object with numeric keys to array
+      items = Object.values(rawItems);
+      logger.info('Debug - Converted object to array, length:', items.length);
+      logger.info('Debug - After conversion, items:', items);
+      logger.info('Debug - First item after conversion:', items[0]);
+    } else {
+      logger.error('Debug - rawItems format not recognized:', {type: typeof rawItems, isNull: rawItems === null, value: rawItems});
+      return res.status(400).json({ 
+        error: { message: 'Order items are invalid or missing' } 
+      });
+    }
+    
+    logger.info('Debug - Final items array:', items);
+    
+    // Check for any undefined or null items before processing
+    if (!items || items.length === 0) {
+      return res.status(400).json({ 
+        error: { message: 'Order items are empty or missing' } 
+      });
+    }
+    
+    // Filter out any invalid items
+    const validItems = items.filter((item, index) => {
+      if (!item) {
+        logger.warn(`Debug - Found null/undefined item at index ${index}`);
+        return false;
       }
+      if (!item.item_name || item.quantity === undefined || item.quantity === null) {
+        logger.warn(`Debug - Found invalid item at index ${index}:`, item);
+        return false;
+      }
+      return true;
+    });
+    
+    if (validItems.length === 0) {
+      return res.status(400).json({ 
+        error: { message: 'No valid items found in order' } 
+      });
     }
     
-    logger.info(`Order delivered: ${updatedOrder.id}, ${inventoryUpdates.length} items processed`);
+    // Transform order items to format expected by inventory matcher
+    const parsedItems = validItems.map(item => ({
+      item_name: item.item_name,
+      quantity: parseFloat(item.quantity),
+      unit: item.unit,
+      category: item.category || 'others',
+      price: parseFloat(item.price || 0),
+      brand: item.brand || null,
+    }));
+    
+    logger.info(`Processing ${parsedItems.length} delivered items for order ${orderId}`);
+    
+    // Use inventory matcher to find matches and apply to inventory
+    const { matchItems, applyToInventory } = require('../services/inventoryMatcher');
+    
+    // Match items against existing inventory using LLM intelligence
+    const matchResults = await matchItems(parsedItems, order.user_id, {
+      useLLM: true,                    // Use LLM for better matching
+      threshold: 0.6,                  // Minimum match confidence
+      autoApproveThreshold: 0.85,      // Auto-approve high confidence matches
+    });
+    
+    // Apply the matched items to inventory
+    const inventoryResults = await applyToInventory(matchResults, order.user_id);
+    
+    // Combine results for response
+    const summary = {
+      totalItems: parsedItems.length,
+      updated: inventoryResults.updated.length,
+      created: inventoryResults.created.length,
+      errors: inventoryResults.errors.length,
+      needsReview: matchResults.needsReview.length,
+    };
+    
+    logger.info(`Order delivered: ${updatedOrder.id}`, summary);
     
     res.json({
+      success: true,
       order: updatedOrder,
-      inventoryUpdates,
-      message: `Order marked as delivered. ${inventoryUpdates.filter(u => u.action !== 'failed').length} items added to inventory.`,
+      inventoryUpdates: {
+        updated: inventoryResults.updated,
+        created: inventoryResults.created,
+        needsReview: matchResults.needsReview,
+        errors: inventoryResults.errors,
+      },
+      summary,
+      message: `Order marked as delivered. ${summary.updated} items updated, ${summary.created} items created in inventory.`,
     });
+    
   } catch (error) {
+    logger.error('Error marking order as delivered:', error);
     next(error);
   }
 });

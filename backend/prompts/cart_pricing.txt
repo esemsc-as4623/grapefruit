@@ -87,7 +87,7 @@ QUANTITY GUIDELINES:
   * Pantry staples (pasta, rice): 1-2 packages
   * Canned goods: 1-3 cans
   * Meat/protein: 1-2 pounds
-  * Eggs: 1 dozen (12 count)
+  * Eggs: 1 dozen
   * Beverages: 1 container or 6-12 pack
 
 UNIT STANDARDIZATION:
@@ -106,13 +106,12 @@ CONFIDENCE SCORING:
 OUTPUT FORMAT:
 Return ONLY a valid JSON object with this exact structure:
 {
-  "suggested_quantity": <number>,
-  "unit": "<string>",
-  "category": "<string>",
   "estimated_price_per_unit": <number>,
-  "total_price": <number>,
+  "unit": "<string>",
+  "suggested_quantity": <number>,
   "confidence": <number between 0 and 1>,
-  "reasoning": "<brief explanation of your suggestion>"
+  "reasoning": "<brief explanation of your suggestion>",
+  "category": "<string>"
 }
 
 EXAMPLES:
@@ -120,109 +119,100 @@ EXAMPLES:
 Input: "Whole Milk"
 Output:
 {
-  "suggested_quantity": 1,
-  "unit": "gallon",
-  "category": "dairy",
   "estimated_price_per_unit": 4.29,
-  "total_price": 4.29,
+  "unit": "gallon",
+  "suggested_quantity": 1,
   "confidence": 0.95,
-  "reasoning": "Standard 1 gallon whole milk, typical household size. Walmart/Amazon average pricing."
+  "reasoning": "Standard 1 gallon whole milk, typical household size. Walmart/Amazon average pricing.",
+  "category": "dairy"
 }
 
 Input: "Bananas"
 Output:
 {
-  "suggested_quantity": 3,
-  "unit": "pound",
-  "category": "produce",
   "estimated_price_per_unit": 0.59,
-  "total_price": 1.77,
+  "unit": "pound",
+  "suggested_quantity": 3,
   "confidence": 0.90,
-  "reasoning": "Typical bunch of bananas (3-5 lbs), standard per-pound pricing at major retailers."
+  "reasoning": "Typical bunch of bananas (3-5 lbs), standard per-pound pricing at major retailers.",
+  "category": "produce"
 }
 
 Input: "Chicken Breast"
 Output:
 {
-  "suggested_quantity": 2,
-  "unit": "pound",
-  "category": "meat",
   "estimated_price_per_unit": 4.99,
-  "total_price": 9.98,
+  "unit": "pound",
+  "suggested_quantity": 2,
   "confidence": 0.85,
-  "reasoning": "Boneless skinless chicken breast, 2 lbs for a typical household meal. Price varies by brand but $4.99/lb is mid-range."
+  "reasoning": "Boneless skinless chicken breast, 2 lbs for a typical household meal. Price varies by brand but $4.99/lb is mid-range.",
+  "category": "meat"
 }
 
 Input: "Large Eggs"
 Output:
 {
-  "suggested_quantity": 12,
-  "unit": "count",
-  "category": "dairy",
   "estimated_price_per_unit": 0.29,
-  "total_price": 3.49,
+  "unit": "count",
+  "suggested_quantity": 12,
   "confidence": 0.95,
-  "reasoning": "One dozen large eggs, standard carton size. Average price around $3.49/dozen or ~$0.29/egg."
+  "reasoning": "One dozen large eggs, standard carton size. Average price around $3.49/dozen or ~$0.29/egg.",
+  "category": "dairy"
 }
 
 Input: "Pasta"
 Output:
 {
-  "suggested_quantity": 1,
-  "unit": "pound",
-  "category": "pantry",
   "estimated_price_per_unit": 1.99,
-  "total_price": 1.99,
+  "unit": "pound",
+  "suggested_quantity": 1,
   "confidence": 0.90,
-  "reasoning": "Standard 1-lb box of pasta (spaghetti, penne, etc.). Mid-tier brand pricing."
+  "reasoning": "Standard 1-lb box of pasta (spaghetti, penne, etc.). Mid-tier brand pricing.",
+  "category": "pantry"
 }
 
 Input: "Greek Yogurt"
 Output:
 {
-  "suggested_quantity": 32,
-  "unit": "ounce",
-  "category": "dairy",
   "estimated_price_per_unit": 0.19,
-  "total_price": 5.99,
+  "unit": "ounce",
+  "suggested_quantity": 32,
   "confidence": 0.85,
-  "reasoning": "Large 32oz container, typical size for weekly consumption. Price per ounce is around $0.19 for mid-tier brands."
+  "reasoning": "Large 32oz container, typical size for weekly consumption. Price per ounce is around $0.19 for mid-tier brands.",
+  "category": "dairy"
 }
 
 Input: "Sourdough Baguette"
 Output:
 {
-  "suggested_quantity": 1,
-  "unit": "each",
-  "category": "bakery",
   "estimated_price_per_unit": 3.49,
-  "total_price": 3.49,
+  "unit": "each",
+  "suggested_quantity": 1,
   "confidence": 0.80,
-  "reasoning": "Fresh bakery sourdough baguette, typical pricing for in-store bakery items. Not $5.99 - actual bakery bread is cheaper."
+  "reasoning": "Fresh bakery sourdough baguette, typical pricing for in-store bakery items. Not $5.99 - actual bakery bread is cheaper.",
+  "category": "bakery"
 }
 
 Input: "Lamb Shank"
 Output:
 {
-  "suggested_quantity": 2,
-  "unit": "pound",
-  "category": "meat",
   "estimated_price_per_unit": 8.99,
-  "total_price": 17.98,
+  "unit": "pound",
+  "suggested_quantity": 2,
   "confidence": 0.75,
-  "reasoning": "Lamb shanks are premium meat, priced higher than chicken or pork. Typical pricing is $8-10/lb for bone-in shanks."
+  "reasoning": "Lamb shanks are premium meat, priced higher than chicken or pork. Typical pricing is $8-10/lb for bone-in shanks.",
+  "category": "meat"
 }
 
 Input: "Chicken Thighs"
 Output:
 {
-  "suggested_quantity": 2,
-  "unit": "pound",
-  "category": "meat",
   "estimated_price_per_unit": 3.49,
-  "total_price": 6.98,
+  "unit": "pound",
+  "suggested_quantity": 2,
   "confidence": 0.85,
-  "reasoning": "Chicken thighs are typically cheaper than breasts. 2 lbs is a typical household meal portion."
+  "reasoning": "Chicken thighs are typically cheaper than breasts. 2 lbs is a typical household meal portion.",
+  "category": "meat"
 }
 
 IMPORTANT REMINDERS:
@@ -237,23 +227,21 @@ IMPORTANT REMINDERS:
 Input: "Chickpeas"
 Output:
 {
-  "suggested_quantity": 1,
-  "unit": "can",
-  "category": "pantry",
   "estimated_price_per_unit": 1.49,
-  "total_price": 1.49,
+  "unit": "can",
+  "suggested_quantity": 1,
   "confidence": 0.90,
-  "reasoning": "Standard 15oz can of chickpeas. Use 'can' as unit for canned goods, not 'ounce' or 'pound'."
+  "reasoning": "Standard 15oz can of chickpeas. Use 'can' as unit for canned goods, not 'ounce' or 'pound'.",
+  "category": "pantry"
 }
 
 Input: "Ketchup"
 Output:
 {
-  "suggested_quantity": 1,
-  "unit": "bottle",
-  "category": "condiments",
   "estimated_price_per_unit": 3.49,
-  "total_price": 3.49,
+  "unit": "bottle",
+  "suggested_quantity": 1,
   "confidence": 0.90,
-  "reasoning": "Standard 32oz bottle of ketchup (Heinz or similar). Use 'bottle' as unit for bottled condiments."
+  "reasoning": "Standard 32oz bottle of ketchup (Heinz or similar). Use 'bottle' as unit for bottled condiments.",
+  "category": "condiments"
 }

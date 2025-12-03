@@ -107,9 +107,9 @@ export const ordersAPI = {
     return response.data;
   },
 
-  // Get pending orders
-  getPending: async () => {
-    const response = await api.get('/orders/pending');
+  // Get orders in transit (placed status)
+  getInTransit: async () => {
+    const response = await api.get('/orders?status=placed');
     return response.data;
   },
 
@@ -122,18 +122,6 @@ export const ordersAPI = {
   // Create new order
   create: async (orderData) => {
     const response = await api.post('/orders', orderData);
-    return response.data;
-  },
-
-  // Approve order
-  approve: async (id, notes = '') => {
-    const response = await api.put(`/orders/${id}/approve`, { notes });
-    return response.data;
-  },
-
-  // Reject order
-  reject: async (id, reason = '') => {
-    const response = await api.put(`/orders/${id}/reject`, { reason });
     return response.data;
   },
 
