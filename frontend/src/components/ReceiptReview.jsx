@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { CheckCircle, Edit2, Plus, Trash2, AlertTriangle, Loader } from 'lucide-react';
+import api from '../services/api';
 
 const ReceiptReview = ({ receiptData, onApplied, onCancel }) => {
   const [items, setItems] = useState([]);
@@ -55,22 +56,11 @@ const ReceiptReview = ({ receiptData, onApplied, onCancel }) => {
         id: item.inventoryItem?.id, // Include ID for updates
       }));
 
-      const response = await fetch(`http://localhost:5000/receipts/${receiptData.receiptId}/apply`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          items: itemsToSubmit,
-        }),
+      const response = await api.post(`/receipts/${receiptData.receiptId}/apply`, {
+        items: itemsToSubmit,
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error?.message || 'Failed to apply items');
-      }
-
-      const data = await response.json();
+      const data = response.data;
 
       // Notify parent component
       if (onApplied) {

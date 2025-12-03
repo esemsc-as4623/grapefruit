@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Upload, FileText, AlertCircle, Check, Loader } from 'lucide-react';
+import api from '../services/api';
 
 const ReceiptUpload = ({ onReceiptParsed }) => {
   const [receiptText, setReceiptText] = useState('');
@@ -19,22 +20,29 @@ const ReceiptUpload = ({ onReceiptParsed }) => {
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
     if (selectedFile) {
-      // Check file type
-      const allowedTypes = ['text/plain', 'text/markdown'];
-      if (!allowedTypes.includes(selectedFile.type) && !selectedFile.name.match(/\.(txt|md)$/i)) {
-        setError('Please upload a .txt or .md file');
+      // Check file type - accept images and text files
+      const allowedTypes = ['text/plain', 'text/markdown', 'image/jpeg', 'image/jpg', 'image/png'];
+      const isImage = selectedFile.type.startsWith('image/');
+      const isText = selectedFile.name.match(/\.(txt|md)$/i);
+
+      if (!allowedTypes.includes(selectedFile.type) && !isText && !isImage) {
+        setError('Please upload an image (.jpg, .png) or text file (.txt, .md)');
         return;
       }
-      
+
       setFile(selectedFile);
       setError(null);
-      
-      // Read file content to display preview
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setReceiptText(event.target.result);
-      };
-      reader.readAsText(selectedFile);
+
+      // Read file content to display preview (only for text files)
+      if (isText || selectedFile.type === 'text/plain' || selectedFile.type === 'text/markdown') {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          setReceiptText(event.target.result);
+        };
+        reader.readAsText(selectedFile);
+      } else if (isImage) {
+        setReceiptText('Image file selected - will be processed with OCR');
+      }
     }
   };
 
@@ -56,8 +64,9 @@ const ReceiptUpload = ({ onReceiptParsed }) => {
 
   // Upload and parse receipt
   const handleUpload = async () => {
-    if (!receiptText.trim()) {
-      setError('Please enter or upload receipt text');
+    // For images, we need the file, for text we need receiptText
+    if (!file && !receiptText.trim()) {
+      setError('Please enter or upload receipt text/image');
       return;
     }
 
@@ -67,47 +76,41 @@ const ReceiptUpload = ({ onReceiptParsed }) => {
       setSuccess(null);
 
       // Step 1: Upload receipt
-      const uploadResponse = await fetch('http://localhost:5000/receipts/upload', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          text: receiptText,
-          userId: 'demo_user', // Single session user ID
-        }),
-      });
+      let uploadResponse;
 
-      if (!uploadResponse.ok) {
-        const errorData = await uploadResponse.json();
-        throw new Error(errorData.error?.message || 'Failed to upload receipt');
+      if (file) {
+        // Send as FormData for file upload
+        const formData = new FormData();
+        formData.append('receipt', file);
+        formData.append('userId', 'demo_user');
+
+        uploadResponse = await api.post('/receipts/upload', formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+      } else {
+        // Send as JSON for text input
+        uploadResponse = await api.post('/receipts/upload', {
+          text: receiptText,
+          userId: 'demo_user',
+        });
       }
 
-      const uploadData = await uploadResponse.json();
+      const uploadData = uploadResponse.data;
       const receiptId = uploadData.receiptId;
 
       setSuccess(`Receipt uploaded! Processing...`);
 
       // Step 2: Parse receipt
-      const parseResponse = await fetch(`http://localhost:5000/receipts/${receiptId}/parse`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          use_llm: true, // Enable LLM parsing
-          min_confidence: 0.5,
-          filter_non_grocery: true,
-        }),
+      const parseResponse = await api.post(`/receipts/${receiptId}/parse`, {
+        use_llm: true, // Enable LLM parsing
+        min_confidence: 0.5,
+        filter_non_grocery: true,
       });
 
-      if (!parseResponse.ok) {
-        const errorData = await parseResponse.json();
-        throw new Error(errorData.error?.message || 'Failed to parse receipt');
-      }
+      const parseData = parseResponse.data;
 
-      const parseData = await parseResponse.json();
-      
       // Backend returns { receipt: { items, stats, ... }, receiptId, status }
       const receiptData = parseData.receipt || parseData;
 
@@ -121,7 +124,7 @@ const ReceiptUpload = ({ onReceiptParsed }) => {
           needsReview: receiptData.needsReview,
           stats: receiptData.stats,
           metadata: uploadData.metadata,
-          rawText: receiptText, // Include the raw receipt text
+          rawText: uploadData.raw_text || receiptText,
         });
       }
 
@@ -133,7 +136,7 @@ const ReceiptUpload = ({ onReceiptParsed }) => {
       }, 2000);
 
     } catch (err) {
-      setError(err.message || 'Failed to process receipt');
+      setError(err.response?.data?.error?.message || err.message || 'Failed to process receipt');
       console.error('Error processing receipt:', err);
     } finally {
       setLoading(false);
@@ -212,7 +215,7 @@ const ReceiptUpload = ({ onReceiptParsed }) => {
       {uploadMode === 'file' && (
         <div className="mb-4">
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Upload File (.txt or .md)
+            Upload File (images or text)
           </label>
           <div
             onDrop={handleDrop}
@@ -221,7 +224,7 @@ const ReceiptUpload = ({ onReceiptParsed }) => {
           >
             <input
               type="file"
-              accept=".txt,.md,text/plain,text/markdown"
+              accept=".txt,.md,.jpg,.jpeg,.png,text/plain,text/markdown,image/jpeg,image/png"
               onChange={handleFileChange}
               className="hidden"
               id="file-upload"
@@ -239,7 +242,7 @@ const ReceiptUpload = ({ onReceiptParsed }) => {
                 )}
               </p>
               <p className="text-xs text-gray-500 mt-1">
-                TXT or MD files only
+                Images (JPG, PNG) or text files (TXT, MD)
               </p>
             </label>
           </div>

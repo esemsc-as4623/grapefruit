@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Base API URL - use environment variable or default to localhost
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
 
 // Create axios instance with default config
 const api = axios.create({
@@ -9,7 +9,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 10000, // 10 seconds
+  timeout: 90000, // 90 seconds (OCR can take 20-30 seconds)
 });
 
 // Request interceptor for logging
