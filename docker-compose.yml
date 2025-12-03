@@ -34,7 +34,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-      target: production
+      target: development
     container_name: grapefruit-backend
     restart: unless-stopped
     environment:
@@ -64,8 +64,11 @@ services:
       ocr-service:
         condition: service_healthy
     volumes:
-      # Only mount logs directory for production
+      # Mount source code for development hot reloading
+      - ./backend/src:/app/src
+      - ./backend/prompts:/app/prompts
       - ./backend/logs:/app/logs
+      - ./backend/package.json:/app/package.json
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 30s
@@ -120,6 +123,13 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    volumes:
+      # Mount source code for development hot reloading
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+      - ./frontend/package.json:/app/package.json
+      # Exclude node_modules to prevent host/container conflicts
+      - /app/node_modules
     networks:
       - grapefruit-network
 
