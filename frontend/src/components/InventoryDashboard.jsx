@@ -129,60 +129,11 @@ const InventoryDashboard = () => {
 
   // Delete item from inventory
   const handleDeleteItem = async (itemId, itemName) => {
-    // Show confirmation prompt
-    setConfirmingDelete({ id: itemId, name: itemName });
-  };
-
-  // Confirm deletion without adding to order
-  const handleConfirmDelete = async (itemId) => {
     try {
       await inventoryAPI.delete(itemId);
       
       // Reload inventory after deletion
       await loadInventory();
-      
-      // Clear confirmation state
-      setConfirmingDelete(null);
-    } catch (err) {
-      setError(err.response?.data?.error?.message || 'Failed to delete item');
-      console.error('Error deleting item:', err);
-    }
-  };
-
-  // Delete item and add to order
-  const handleDeleteAndAddToOrder = async (itemId, itemName) => {
-    try {
-      // Get the item details - either from confirmingDelete.item or from inventory
-      let item = confirmingDelete?.item;
-      if (!item) {
-        item = inventory.find(i => i.id === itemId);
-      }
-      if (!item) {
-        throw new Error('Item not found');
-      }
-
-      // Determine source based on confirmingDelete
-      const source = confirmingDelete?.source || 'trash';
-
-      // Add to cart - use inventory unit, let LLM suggest quantity and price
-      await cartAPI.addItem({
-        item_name: item.item_name,
-        unit: item.unit, // Use unit from inventory
-        category: item.category,
-        source: source,
-        use_llm_pricing: true, // Enable LLM pricing for quantity and price
-      });
-      
-      await inventoryAPI.delete(itemId);
-      
-      // Reload inventory after deletion
-      await loadInventory();
-      
-      // Clear confirmation state
-      setConfirmingDelete(null);
-      
-      // Show success message
-      setError(null);
     } catch (err) {
       setError(err.response?.data?.error?.message || 'Failed to delete item');
       console.error('Error deleting item:', err);
@@ -206,11 +157,6 @@ const InventoryDashboard = () => {
       setError(err.response?.data?.error?.message || 'Failed to add item to cart');
       console.error('Error adding to cart:', err);
     }
-  };
-
-  // Cancel deletion
-  const handleCancelDelete = () => {
-    setConfirmingDelete(null);
   };
 
   // Get step size based on unit
@@ -602,28 +548,6 @@ const InventoryDashboard = () => {
                       <h3 className="text-lg font-semibold text-gray-900 mb-2">
                         Add {item.item_name} to order?
                       </h3>
-                    </div>
-
-                    {/* Action Buttons */}
-                    <div className="flex flex-col gap-2">
-                      <button
-                        onClick={() => handleDeleteAndAddToOrder(item.id, item.item_name)}
-                        className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm font-medium"
-                      >
-                        Yes, Add to Order
-                      </button>
-                      <button
-                        onClick={() => handleConfirmDelete(item.id)}
-                        className="w-full px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm font-medium"
-                      >
-                        No, Just Remove
-                      </button>
-                      <button
-                        onClick={handleCancelDelete}
-                        className="w-full px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-sm font-medium"
-                      >
-                        Cancel
-                      </button>
                     </div>
                   </div>
                 ) : isDepletingThisItem ? (

@@ -116,13 +116,17 @@ router.post('/upload', upload.single('receipt'), async (req, res, next) => {
 
           logger.info(`Calling OCR service for ${req.file.originalname}`);
 
-          // Send OCR parameters as query params, not form data
+          // Send OCR request to the refactored service
           const ocrResponse = await axios.post(
-            `${OCR_SERVICE_URL}/ocr?method=easyocr&use_llm=false&include_raw_text=true`,
+            `${OCR_SERVICE_URL}/ocr/receipt`,
             formData,
             {
               headers: formData.getHeaders(),
               timeout: 60000, // 60 second timeout for OCR
+              params: {
+                engine: 'easyocr',
+                use_llm: false
+              }
             }
           );
 

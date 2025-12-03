@@ -41,7 +41,7 @@ const ReceiptUpload = ({ onReceiptParsed }) => {
         };
         reader.readAsText(selectedFile);
       } else if (isImage) {
-        setReceiptText('Image file selected - will be processed with OCR');
+        setReceiptText('Image file uploaded - will be processed with OCR');
       }
     }
   };
@@ -286,8 +286,7 @@ const ReceiptUpload = ({ onReceiptParsed }) => {
       {/* Info Box */}
       <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
         <p className="text-sm text-blue-800">
-          <strong>Tip:</strong> For best results, use receipt text files from your examples folder
-          or copy-paste from email confirmations.
+          <strong>Tip:</strong> For best results, upload receipt text files or copy-paste from email confirmations.
         </p>
       </div>
     </div>
