@@ -6,6 +6,8 @@
 const express = require('express');
 const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
+const axios = require('axios');
+const FormData = require('form-data');
 const { parseReceipt, extractMetadata } = require('../services/receiptParser');
 const { matchItems, applyToInventory } = require('../services/inventoryMatcher');
 const logger = require('../utils/logger');
@@ -97,13 +99,57 @@ router.post('/upload', upload.single('receipt'), async (req, res, next) => {
     if (req.file) {
       if (req.file.mimetype === 'text/plain' || req.file.mimetype === 'text/markdown') {
         receiptText = req.file.buffer.toString('utf-8');
+      } else if (req.file.mimetype.startsWith('image/')) {
+        // Call Python OCR service
+        const OCR_SERVICE_URL = process.env.OCR_SERVICE_URL || 'http://localhost:5002';
+        
+        try {
+          const formData = new FormData();
+          formData.append('file', req.file.buffer, {
+            filename: req.file.originalname,
+            contentType: req.file.mimetype,
+          });
+
+          logger.info(`Calling OCR service for ${req.file.originalname}`);
+
+          // Send OCR parameters as query params, not form data
+          const ocrResponse = await axios.post(
+            `${OCR_SERVICE_URL}/ocr?method=easyocr&use_llm=false&include_raw_text=true`,
+            formData,
+            {
+              headers: formData.getHeaders(),
+              timeout: 60000, // 60 second timeout for OCR
+            }
+          );
+
+          receiptText = ocrResponse.data.raw_text;
+          
+          logger.info(`OCR completed in ${ocrResponse.data.processing_time_ms}ms, extracted ${receiptText.length} characters`);
+          
+        } catch (ocrError) {
+          logger.error(`OCR service error: ${ocrError.message}`);
+          
+          if (ocrError.code === 'ECONNREFUSED') {
+            return res.status(503).json({
+              error: {
+                message: 'OCR service unavailable. Please ensure the Python OCR service is running.',
+                code: 'OCR_SERVICE_UNAVAILABLE',
+              },
+            });
+          }
+          
+          return res.status(500).json({
+            error: {
+              message: `OCR failed: ${ocrError.message}`,
+              code: 'OCR_FAILED',
+            },
+          });
+        }
       } else {
-        // For images/PDFs, we'd run OCR here
-        // For now, return error
         return res.status(400).json({
           error: {
-            message: 'OCR not yet implemented. Please upload .txt or .md files for now.',
-            code: 'OCR_NOT_IMPLEMENTED',
+            message: 'Unsupported file type. Please upload images, text, or markdown files.',
+            code: 'UNSUPPORTED_FILE_TYPE',
           },
         });
       }
