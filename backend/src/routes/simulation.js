@@ -1,6 +1,6 @@
 const express = require('express');
 const Joi = require('joi');
-const { Inventory, Orders, Preferences, Cart } = require('../models/db');
+const { Inventory, Orders, Preferences } = require('../models/db');
 const db = require('../config/database');
 const logger = require('../utils/logger');
 const consumptionLearner = require('../services/consumptionLearner');
@@ -105,6 +105,13 @@ router.post('/day', async (req, res, next) => {
       WHERE user_id = $1
     `, [userId]);
     
+    await db.query(`
+      UPDATE consumption_history
+      SET 
+        timestamp = timestamp - INTERVAL '1 day'
+      WHERE user_id = $1
+    `, [userId]);
+    
     logger.info('Advanced time by 1 day for all records');
     
     // Get all inventory items
@@ -127,14 +134,20 @@ router.post('/day', async (req, res, next) => {
       });
     }
     
-    // Separate items into two groups: those with consumption rates and those without
-    const itemsWithConsumption = items.filter(item => item.average_daily_consumption);
-    const itemsWithoutConsumption = items.filter(item => !item.average_daily_consumption);
+    // Separate items into two groups: those with consumption rates > 0 and those without
+    const itemsWithConsumption = items.filter(item => item.average_daily_consumption > 0);
+    const itemsWithoutConsumption = items.filter(item => !item.average_daily_consumption || item.average_daily_consumption <= 0);
     
     // Deplete items with known consumption rates with realistic variability
     for (const item of itemsWithConsumption) {
       const stepSize = getStepSize(item.unit);
-      const baseConsumption = item.average_daily_consumption * 1; // 1 day
+      
+      // Apply category-based consumption multiplier
+      // Dairy, produce, bread, and meat are 2x more likely to be consumed
+      const perishableCategories = ['dairy', 'produce', 'bread', 'meat'];
+      const categoryMultiplier = perishableCategories.includes(item.category?.toLowerCase()) ? 2.0 : 1.0;
+      
+      const baseConsumption = item.average_daily_consumption * categoryMultiplier; // Apply multiplier
       
       // Add realistic consumption variability
       const rand = Math.random();
@@ -174,22 +187,8 @@ router.post('/day', async (req, res, next) => {
         itemCreatedAt: item.created_at,
       });
       
-      // If quantity reaches 0 or goes below 0, delete and optionally add to cart
+      // If quantity reaches 0 or goes below 0, delete item
       if (newQuantity <= 0) {
-        if (Math.random() < 0.5) {
-          // 50% chance: Add to cart before deleting
-          await Cart.addItem({
-            user_id: userId,
-            item_name: item.item_name,
-            quantity: 1,
-            unit: item.unit,
-            category: item.category,
-            source: 'simulation',
-          });
-          cartAddedItems.push(item.item_name);
-          logger.info(`Added ${item.item_name} to cart (depleted to 0)`);
-        }
-        
         await Inventory.delete(item.id);
         deletedItems.push(item.item_name);
         logger.info(`Deleted item ${item.item_name} - quantity reached ${newQuantity.toFixed(2)}`);
@@ -217,9 +216,9 @@ router.post('/day', async (req, res, next) => {
     
     // For items WITHOUT consumption rates, apply consistent consumption pattern
     if (itemsWithoutConsumption.length > 0) {
-      // Calculate consistent consumption target: 5-8 items per day (or 30-50% of these items if smaller)
-      const minConsumption = Math.min(5, Math.ceil(itemsWithoutConsumption.length * 0.3));
-      const maxConsumption = Math.min(8, Math.ceil(itemsWithoutConsumption.length * 0.5));
+      // Calculate consistent consumption target: 2-5 items per day (or 20-30% of these items if smaller)
+      const minConsumption = Math.min(2, Math.ceil(itemsWithoutConsumption.length * 0.2));
+      const maxConsumption = Math.min(5, Math.ceil(itemsWithoutConsumption.length * 0.3));
       const targetConsumption = Math.floor(Math.random() * (maxConsumption - minConsumption + 1)) + minConsumption;
       
       // Shuffle items to randomize which ones are consumed
@@ -229,8 +228,8 @@ router.post('/day', async (req, res, next) => {
       for (let i = 0; i < Math.min(targetConsumption, shuffledItems.length); i++) {
         const item = shuffledItems[i];
         
-        // 80% chance of depletion, 20% chance of deletion (disposal)
-        const shouldDelete = Math.random() < 0.2;
+        // 90% chance of depletion, 10% chance of deletion (disposal)
+        const shouldDelete = Math.random() < 0.1;
         
         if (shouldDelete) {
           // Delete item (user disposed of it)
@@ -253,9 +252,13 @@ router.post('/day', async (req, res, next) => {
           // No consumption rate - reduce by step-based amount
           const stepSize = getStepSize(item.unit);
           
-          // Deplete by 1-3 steps (depending on step size)
+          // Apply category-based consumption multiplier
+          const perishableCategories = ['dairy', 'produce', 'bread', 'meat'];
+          const categoryMultiplier = perishableCategories.includes(item.category?.toLowerCase()) ? 2.0 : 1.0;
+          
+          // Deplete by 1-3 steps (depending on step size and category)
           const stepsToDeplete = Math.floor(Math.random() * 3) + 1;
-          const depletionAmount = stepsToDeplete * stepSize;
+          const depletionAmount = stepsToDeplete * stepSize * categoryMultiplier;
           const newQuantity = roundToStep(item.quantity - depletionAmount, stepSize);
           
           // Record consumption event for ML learning
@@ -272,19 +275,10 @@ router.post('/day', async (req, res, next) => {
           });
           
           if (newQuantity <= 0) {
-            // Very low quantity - delete and add to cart
-            await Cart.addItem({
-              user_id: userId,
-              item_name: item.item_name,
-              quantity: 1,
-              unit: item.unit,
-              category: item.category,
-              source: 'simulation',
-            });
-            cartAddedItems.push(item.item_name);
+            // Very low quantity - delete
             await Inventory.delete(item.id);
             deletedItems.push(item.item_name);
-            logger.info(`Deleted ${item.item_name} (depleted to 0 or below), added to cart`);
+            logger.info(`Deleted ${item.item_name} (depleted to 0 or below)`);
           } else {
             const updated = await Inventory.update(item.id, {
               quantity: parseFloat(newQuantity.toFixed(2)),
@@ -292,62 +286,6 @@ router.post('/day', async (req, res, next) => {
             updatedItems.push(updated);
             logger.info(`Depleted ${item.item_name} by ${depletionAmount.toFixed(2)} to ${newQuantity.toFixed(2)} ${item.unit}`);
           }
-        }
-      }
-    }
-    
-    // Smart shopping list additions based on depletion levels
-    // Check remaining items (not consumed today) for potential cart additions
-    const remainingItems = await Inventory.findByUser(userId);
-    
-    for (const item of remainingItems) {
-      // Calculate depletion percentage
-      let depletionScore = 0;
-      
-      if (item.predicted_runout) {
-        const daysUntilRunout = (new Date(item.predicted_runout) - new Date()) / (1000 * 60 * 60 * 24);
-        
-        if (daysUntilRunout <= 0) {
-          depletionScore = 1.0; // Already out or about to run out
-        } else if (daysUntilRunout <= 3) {
-          depletionScore = 0.8; // 80% chance if running out in 3 days
-        } else if (daysUntilRunout <= 7) {
-          depletionScore = 0.5; // 50% chance if running out in a week
-        } else if (daysUntilRunout <= 14) {
-          depletionScore = 0.2; // 20% chance if running out in 2 weeks
-        } else {
-          depletionScore = 0.05; // 5% chance otherwise
-        }
-      } else {
-        // No predicted runout - use quantity-based heuristic
-        if (item.quantity < 1) {
-          depletionScore = 0.6;
-        } else if (item.quantity < 3) {
-          depletionScore = 0.3;
-        } else {
-          depletionScore = 0.1;
-        }
-      }
-      
-      // Add random element to prevent deterministic behavior
-      if (Math.random() < depletionScore) {
-        // Check if item is already in cart to avoid duplicates
-        const existingCartItems = await Cart.findByUser(userId);
-        const alreadyInCart = existingCartItems.some(cartItem => 
-          cartItem.item_name.toLowerCase() === item.item_name.toLowerCase()
-        );
-        
-        if (!alreadyInCart && !cartAddedItems.includes(item.item_name)) {
-          await Cart.addItem({
-            user_id: userId,
-            item_name: item.item_name,
-            quantity: 1,
-            unit: item.unit,
-            category: item.category,
-            source: 'simulation',
-          });
-          cartAddedItems.push(item.item_name);
-          logger.info(`Added ${item.item_name} to cart (depletion score: ${depletionScore.toFixed(2)})`);
         }
       }
     }

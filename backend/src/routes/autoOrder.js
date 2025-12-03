@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../config/database');
 const logger = require('../utils/logger');
 const autoOrderScheduler = require('../services/autoOrderScheduler');
+const { logAudit } = require('../services/auditLogger');
 
 const router = express.Router();
 
@@ -185,6 +186,7 @@ router.post('/auto-order/jobs/run', async (req, res, next) => {
       'detect_zero_inventory',
       'process_to_order',
       'process_deliveries',
+      'auto_add_low_stock_to_cart',
     ];
 
     if (!validJobs.includes(job_name)) {

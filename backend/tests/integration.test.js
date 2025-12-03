@@ -182,8 +182,11 @@ describe('Grapefruit Backend Integration Tests', () => {
     test('GET /health should return 200 OK', async () => {
       const response = await request(app).get('/health');
       expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('status', 'ok');
+      expect(response.body).toHaveProperty('status');
+      expect(['healthy', 'degraded']).toContain(response.body.status);
       expect(response.body).toHaveProperty('timestamp');
+      expect(response.body).toHaveProperty('database');
+      expect(response.body).toHaveProperty('migrations');
     });
   });
 
@@ -316,18 +319,8 @@ describe('Grapefruit Backend Integration Tests', () => {
     test('GET /preferences should return user preferences', async () => {
       const response = await request(app).get('/preferences');
       expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('max_spend');
-      expect(response.body).toHaveProperty('approval_mode');
       expect(response.body).toHaveProperty('brand_prefs');
-    });
-
-    test('PUT /preferences should update max_spend', async () => {
-      const response = await request(app)
-        .put('/preferences')
-        .send({ max_spend: 300.00 });
-      
-      expect(response.status).toBe(200);
-      expect(parseFloat(response.body.max_spend)).toBe(300.00);
+      expect(response.body).toHaveProperty('allowed_vendors');
     });
 
     test('PUT /preferences should update brand preferences', async () => {
@@ -397,29 +390,6 @@ describe('Grapefruit Backend Integration Tests', () => {
       expect(response.body.status).toBe('pending');
       
       testOrderId = response.body.id;
-    });
-
-    test('POST /orders should reject order exceeding spending cap', async () => {
-      // First set a low spending cap
-      await request(app).put('/preferences').send({ max_spend: 10.00 });
-      
-      const order = {
-        vendor: 'walmart',
-        items: [
-          { item_name: 'Expensive Item', quantity: 1, unit: 'count', price: 100.00 },
-        ],
-        subtotal: 100.00,
-        tax: 8.00,
-        shipping: 0.00,
-        total: 108.00,
-      };
-      
-      const response = await request(app).post('/orders').send(order);
-      expect(response.status).toBe(400);
-      expect(response.body.error.message).toContain('exceeds spending limit');
-      
-      // Reset spending cap
-      await request(app).put('/preferences').send({ max_spend: 250.00 });
     });
 
     test('PUT /orders/:id/approve should approve pending order', async () => {

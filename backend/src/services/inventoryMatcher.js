@@ -135,9 +135,9 @@ function calculateMatchScore(parsedItem, inventoryItem) {
     if (parsedItem.category === inventoryItem.category) {
       score += 0.2;
     } else if (
-      // Allow some category flexibility (dairy/beverages for milk)
-      (parsedItem.category === 'dairy' && inventoryItem.category === 'beverages') ||
-      (parsedItem.category === 'beverages' && inventoryItem.category === 'dairy')
+      // Allow some category flexibility (pantry/bread)
+      (parsedItem.category === 'pantry' && inventoryItem.category === 'bread') ||
+      (parsedItem.category === 'bread' && inventoryItem.category === 'pantry')
     ) {
       score += 0.1;
     }
@@ -368,11 +368,12 @@ async function applyToInventory(matchResults, userId = 'demo_user') {
           itemCreatedAt: inventoryItem.created_at,
         });
         
-        const updated = await Inventory.update(inventoryItem.id, {
-          quantity: item.newQuantity,
-          last_purchase_date: new Date(),
-          last_purchase_quantity: item.quantity,
-        });
+        // Use addQuantity to properly add to existing quantity and update purchase tracking
+        const updated = await Inventory.addQuantity(
+          inventoryItem.id,
+          item.quantity, // Add the quantity from the receipt
+          inventoryItem.average_daily_consumption
+        );
         
         // Learn and update consumption rate for this item
         const learningResult = await consumptionLearner.learnConsumptionRate(

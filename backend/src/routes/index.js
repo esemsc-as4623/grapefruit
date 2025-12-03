@@ -3,6 +3,9 @@ const Joi = require('joi');
 const { Inventory, Preferences, Orders, Cart } = require('../models/db');
 const logger = require('../utils/logger');
 const consumptionLearner = require('../services/consumptionLearner');
+const { suggestPriceAndQuantity } = require('../services/cartPricer');
+const priceService = require('../services/priceService');
+const { logAudit } = require('../services/auditLogger');
 
 const router = express.Router();
 
@@ -29,6 +32,7 @@ const validateUUID = (paramName) => (req, res, next) => {
 // VALIDATION SCHEMAS
 // ============================================
 const inventorySchema = Joi.object({
+  user_id: Joi.string().optional(), // Allow user_id to be passed, defaults to 'demo_user' if not provided
   item_name: Joi.string().required().max(255),
   quantity: Joi.number().min(0).required(),
   unit: Joi.string().required().max(50),
@@ -38,13 +42,12 @@ const inventorySchema = Joi.object({
 });
 
 const preferencesSchema = Joi.object({
-  max_spend: Joi.number().min(0).optional(),
-  approval_mode: Joi.string().valid('manual', 'auto_under_limit', 'auto_all').optional(),
-  auto_approve_limit: Joi.number().min(0).optional(),
   brand_prefs: Joi.object().optional(),
   allowed_vendors: Joi.array().items(Joi.string()).optional(),
   notify_low_inventory: Joi.boolean().optional(),
   notify_order_ready: Joi.boolean().optional(),
+  auto_order_enabled: Joi.boolean().optional(),
+  auto_order_threshold_days: Joi.number().integer().min(0).max(30).optional(),
 });
 
 const orderSchema = Joi.object({
@@ -64,12 +67,13 @@ const orderSchema = Joi.object({
 
 const cartItemSchema = Joi.object({
   item_name: Joi.string().required().max(255),
-  quantity: Joi.number().min(0.01).required(),
-  unit: Joi.string().required().max(50),
+  quantity: Joi.number().min(0.01).optional(), // Made optional - LLM can suggest
+  unit: Joi.string().max(50).optional(),        // Made optional - LLM can suggest
   category: Joi.string().max(100).optional(),
   estimated_price: Joi.number().min(0).optional(),
   notes: Joi.string().max(500).optional(),
   source: Joi.string().valid('manual', 'trash', 'deplete', 'cart_icon').optional(),
+  use_llm_pricing: Joi.boolean().optional().default(true), // Enable LLM pricing by default
 });
 
 // ============================================
@@ -242,10 +246,12 @@ router.post('/inventory/bulk', async (req, res, next) => {
           );
           
           if (existing) {
-            // Update quantity (add to existing)
-            const updated = await Inventory.update(existing.id, {
-              quantity: existing.quantity + value.quantity,
-            });
+            // Add quantity to existing item (instead of replacing)
+            const updated = await Inventory.addQuantity(
+              existing.id,
+              value.quantity,
+              value.average_daily_consumption || null
+            );
             results.updated.push(updated);
           } else {
             // Create new
@@ -513,6 +519,7 @@ router.get('/orders/:id', validateUUID('id'), async (req, res, next) => {
 /**
  * POST /orders
  * Create new order
+ * Now validates and enriches items with real Amazon catalog prices
  */
 router.post('/orders', async (req, res, next) => {
   try {
@@ -520,35 +527,63 @@ router.post('/orders', async (req, res, next) => {
     if (error) {
       return res.status(400).json({ error: { message: error.details[0].message } });
     }
-    
+
     const userId = req.body.user_id || 'demo_user';
-    
-    // Check spending cap
-    const prefs = await Preferences.findByUser(userId);
-    if (prefs && value.total > prefs.max_spend) {
-      return res.status(400).json({
-        error: {
-          message: 'Order exceeds spending limit',
-          limit: prefs.max_spend,
-          total: value.total,
-        },
-      });
-    }
-    
-    // Create order
+
+    // Enrich order items with prices from catalog (safety check)
+    // This ensures consistent pricing even if frontend passes stale/wrong prices
+    const enrichedItems = await Promise.all(
+      value.items.map(async (item) => {
+        // If item already has a price, validate it against catalog
+        if (item.price) {
+          const priceData = await priceService.getPriceForItem(item.item_name);
+
+          // Allow small price differences (catalog may have updated)
+          const priceDiff = Math.abs(item.price - priceData.price);
+          if (priceDiff > 0.50) {
+            logger.warn('Order item price mismatch', {
+              itemName: item.item_name,
+              sentPrice: item.price,
+              catalogPrice: priceData.price,
+              diff: priceDiff,
+            });
+          }
+
+          return {
+            ...item,
+            price: priceData.price, // Use catalog price (authoritative)
+            brand: priceData.brand,
+          };
+        } else {
+          // Fetch price from catalog
+          const priceData = await priceService.getPriceForItem(item.item_name);
+          return {
+            ...item,
+            price: priceData.price,
+            brand: priceData.brand,
+          };
+        }
+      })
+    );
+
+    // Recalculate totals with validated prices
+    const subtotal = enrichedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const tax = subtotal * 0.08;
+    const shipping = subtotal >= 35 ? 0 : 5.99;
+    const total = subtotal + tax + shipping;
+
+    // Create order with validated prices
     const order = await Orders.create({
       ...value,
       user_id: userId,
+      items: enrichedItems,
+      subtotal,
+      tax,
+      shipping,
+      total,
     });
-    
-    // Auto-approve if conditions met
-    if (prefs && prefs.approval_mode === 'auto_all') {
-      await Orders.approve(order.id, 'Auto-approved (all orders)');
-    } else if (prefs && prefs.approval_mode === 'auto_under_limit' && value.total <= prefs.auto_approve_limit) {
-      await Orders.approve(order.id, `Auto-approved (under $${prefs.auto_approve_limit})`);
-    }
-    
-    logger.info(`Order created: ${order.id}`);
+
+    logger.info(`Order created with validated Amazon prices: ${order.id} - $${total.toFixed(2)}`);
     res.status(201).json(order);
   } catch (error) {
     next(error);
@@ -620,6 +655,94 @@ router.put('/orders/:id/placed', validateUUID('id'), async (req, res, next) => {
   }
 });
 
+/**
+ * PUT /orders/:id/delivered
+ * Mark order as delivered and add items to inventory
+ */
+router.put('/orders/:id/delivered', validateUUID('id'), async (req, res, next) => {
+  try {
+    const orderId = req.params.id;
+    
+    // Get the order first to access its items
+    const order = await Orders.findById(orderId);
+    
+    if (!order) {
+      return res.status(404).json({ error: { message: 'Order not found' } });
+    }
+    
+    if (order.status === 'delivered') {
+      return res.status(400).json({ error: { message: 'Order already marked as delivered' } });
+    }
+    
+    // Mark order as delivered
+    const updatedOrder = await Orders.markDelivered(orderId);
+    
+    if (!updatedOrder) {
+      return res.status(400).json({ error: { message: 'Failed to mark order as delivered. Order must be in pending status.' } });
+    }
+    
+    // Add each item to inventory
+    const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+    const inventoryUpdates = [];
+    
+    for (const item of items) {
+      try {
+        // Try to find existing inventory item by name and unit
+        let inventoryItem = await Inventory.findByNameAndUnit(
+          order.user_id, 
+          item.item_name, 
+          item.unit
+        );
+        
+        if (inventoryItem) {
+          // Item exists - add quantity
+          const updated = await Inventory.addQuantity(
+            inventoryItem.id, 
+            item.quantity,
+            inventoryItem.average_daily_consumption
+          );
+          inventoryUpdates.push({
+            action: 'updated',
+            item: updated,
+          });
+          logger.info(`Added ${item.quantity} ${item.unit} to existing inventory item: ${item.item_name}`);
+        } else {
+          // Item doesn't exist - create new
+          const newItem = await Inventory.create({
+            user_id: order.user_id,
+            item_name: item.item_name,
+            quantity: item.quantity,
+            unit: item.unit,
+            category: item.category || 'others',
+          });
+          inventoryUpdates.push({
+            action: 'created',
+            item: newItem,
+          });
+          logger.info(`Created new inventory item: ${item.item_name} (${item.quantity} ${item.unit})`);
+        }
+      } catch (itemError) {
+        logger.error(`Error adding item ${item.item_name} to inventory:`, itemError);
+        inventoryUpdates.push({
+          action: 'failed',
+          item_name: item.item_name,
+          error: itemError.message,
+        });
+      }
+    }
+    
+    logger.info(`Order delivered: ${updatedOrder.id}, ${inventoryUpdates.length} items processed`);
+    
+    res.json({
+      order: updatedOrder,
+      inventoryUpdates,
+      message: `Order marked as delivered. ${inventoryUpdates.filter(u => u.action !== 'failed').length} items added to inventory.`,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // ============================================
 // CART ROUTES
 // ============================================
@@ -627,18 +750,24 @@ router.put('/orders/:id/placed', validateUUID('id'), async (req, res, next) => {
 /**
  * GET /cart
  * Get all cart items for user
+ * Now enriched with real-time prices from amazon_catalog
  */
 router.get('/cart', async (req, res, next) => {
   try {
     const userId = req.query.user_id || 'demo_user';
     const items = await Cart.findByUser(userId);
-    const count = await Cart.getCount(userId);
-    const total = await Cart.getTotalPrice(userId);
-    
+
+    // Enrich cart items with current prices from catalog
+    const enrichedItems = await priceService.enrichCartWithPrices(items);
+
+    // Calculate totals with real prices
+    const totals = priceService.calculateCartTotals(enrichedItems);
+
     res.json({
-      items,
-      count,
-      total,
+      items: enrichedItems,
+      count: enrichedItems.length,
+      ...totals,
+      lastUpdated: new Date().toISOString(),
     });
   } catch (error) {
     next(error);
@@ -665,7 +794,15 @@ router.get('/cart/:id', validateUUID('id'), async (req, res, next) => {
 
 /**
  * POST /cart
- * Add item to cart
+ * Add item to cart with intelligent pricing
+ * 
+ * ARCHITECTURE:
+ * 1. LLM (cartPricer) suggests: quantity, unit, category, and price estimate
+ * 2. Catalog (priceService) provides: authoritative price (if available)
+ * 3. Use catalog price for good matches (confidence >= 0.7)
+ * 4. Use LLM price for items not in catalog (confidence < 0.7)
+ * 
+ * This ensures accurate pricing for known items, while using AI estimates for new/specialty items.
  */
 router.post('/cart', async (req, res, next) => {
   try {
@@ -673,16 +810,156 @@ router.post('/cart', async (req, res, next) => {
     if (error) {
       return res.status(400).json({ error: { message: error.details[0].message } });
     }
-    
+
     const userId = req.body.user_id || 'demo_user';
+    const useLLMPricing = value.use_llm_pricing !== false; // Default to true
     
+    let itemData = { ...value, user_id: userId };
+    let llmSuggestion = null;
+    
+    // STEP 1: Get LLM suggestions for quantity, unit, category, and price
+    // Call LLM if enabled and ANY field is missing
+    const needsLLM = useLLMPricing && (!value.quantity || !value.unit || !value.category);
+    
+    if (needsLLM) {
+      try {
+        logger.info(`[LLM] Getting suggestion for: ${value.item_name}`, {
+          missingFields: {
+            quantity: !value.quantity,
+            unit: !value.unit,
+            category: !value.category
+          }
+        });
+        
+        llmSuggestion = await suggestPriceAndQuantity(value.item_name, value.category);
+        
+        // Log raw LLM response for debugging
+        logger.info(`[LLM] Raw suggestion received:`, {
+          suggested_quantity: llmSuggestion.suggested_quantity,
+          unit: llmSuggestion.unit,
+          category: llmSuggestion.category,
+          estimated_price_per_unit: llmSuggestion.estimated_price_per_unit,
+          confidence: llmSuggestion.confidence,
+        });
+        
+        // Use LLM suggestions for missing fields
+        if (!value.quantity) {
+          itemData.quantity = llmSuggestion.suggested_quantity;
+          logger.info(`[LLM] Setting quantity: ${itemData.quantity}`);
+        }
+        if (!value.unit) {
+          itemData.unit = llmSuggestion.unit;
+          logger.info(`[LLM] Setting unit: ${itemData.unit}`);
+        }
+        if (!value.category && llmSuggestion.category) {
+          itemData.category = llmSuggestion.category;
+          logger.info(`[LLM] Setting category: ${itemData.category}`);
+        }
+        
+        logger.info(`[LLM] Final itemData after applying suggestions:`, {
+          quantity: itemData.quantity,
+          unit: itemData.unit,
+          category: itemData.category,
+        });
+      } catch (llmError) {
+        // If LLM fails, require user to provide values
+        logger.error(`[LLM] Failed for ${value.item_name}:`, llmError);
+        
+        if (!value.quantity || !value.unit) {
+          return res.status(400).json({ 
+            error: { 
+              message: 'Quantity and unit are required when LLM pricing is unavailable',
+              llm_error: llmError.message 
+            } 
+          });
+        }
+      }
+    } else {
+      logger.info(`[LLM] Skipping LLM call for ${value.item_name}`, {
+        useLLMPricing,
+        hasQuantity: !!value.quantity,
+        hasUnit: !!value.unit,
+        hasCategory: !!value.category
+      });
+    }
+    
+    // STEP 2: Fetch price from amazon_catalog
+    const priceData = await priceService.getPriceForItem(value.item_name);
+    
+    logger.info(`[Catalog] Lookup for ${value.item_name}:`, {
+      price: priceData.price,
+      brand: priceData.brand,
+      source: priceData.source,
+      matchType: priceData.matchType,
+      confidence: priceData.confidence,
+    });
+
+    // STEP 3: Decide which price to use based on catalog confidence
+    // Confidence >= 0.7: Good catalog match, use catalog price
+    // Confidence < 0.7: Poor/no match, use LLM estimate if available
+    let finalPrice = priceData.price;
+    let finalBrand = priceData.brand;
+    let priceSource = priceData.source;
+    
+    if (priceData.confidence < 0.7 && llmSuggestion && llmSuggestion.estimated_price_per_unit) {
+      finalPrice = llmSuggestion.estimated_price_per_unit;
+      finalBrand = 'AI Estimated';
+      priceSource = 'llm_estimate';
+      
+      logger.info(`[Pricing] Using LLM estimate for ${value.item_name}:`, {
+        catalogConfidence: priceData.confidence,
+        catalogPrice: priceData.price,
+        llmPrice: finalPrice,
+        reason: 'No close catalog match found'
+      });
+    } else {
+      logger.info(`[Pricing] Using catalog price for ${value.item_name}:`, {
+        catalogConfidence: priceData.confidence,
+        catalogPrice: finalPrice,
+        llmPrice: llmSuggestion?.estimated_price_per_unit || 'N/A',
+        reason: priceData.confidence >= 0.7 ? 'Good catalog match' : 'No LLM estimate available'
+      });
+    }
+
+    // STEP 4: Create cart item with final price
+    const startTime = Date.now();
     const item = await Cart.addItem({
-      ...value,
-      user_id: userId,
+      ...itemData,
+      estimated_price: finalPrice,
+    });
+
+    // STEP 5: Enrich response with price metadata
+    const enrichedItem = {
+      ...item,
+      price: finalPrice,
+      brand: finalBrand,
+      catalog_name: priceData.catalogName,
+      priceSource: priceSource,
+      matchType: priceData.matchType,
+      confidence: priceData.confidence,
+    };
+
+    logger.info(`[Cart] Item added: ${item.id} - ${item.item_name} (${itemData.quantity} ${itemData.unit} @ $${finalPrice})`);
+    
+    // Log audit event
+    await logAudit({
+      userId,
+      action: 'cart_add_item',
+      resourceType: 'cart',
+      resourceId: item.id,
+      status: 'success',
+      metadata: {
+        itemName: item.item_name,
+        quantity: item.quantity,
+        unit: item.unit,
+        price: finalPrice,
+        priceSource,
+      },
+      request: req,
+      executionTimeMs: Date.now() - startTime,
     });
     
-    logger.info(`Item added to cart: ${item.id} - ${item.item_name}`);
-    res.status(201).json(item);
+    res.status(201).json(enrichedItem);
   } catch (error) {
     next(error);
   }
@@ -737,6 +1014,110 @@ router.delete('/cart', async (req, res, next) => {
     
     logger.info(`Cart cleared for user: ${userId}`);
     res.json({ message: 'Cart cleared', count: items.length });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /cart/auto-add-low-stock
+ * Automatically add all low-stock items to cart (when auto-order is enabled)
+ * This checks user preferences and only adds items if auto_order_enabled is true
+ */
+router.post('/cart/auto-add-low-stock', async (req, res, next) => {
+  try {
+    const userId = req.query.user_id || req.body.user_id || 'demo_user';
+    
+    // Check if auto-order is enabled for this user
+    const preferences = await Preferences.findByUser(userId);
+    
+    if (!preferences || !preferences.auto_order_enabled) {
+      return res.status(400).json({ 
+        error: { 
+          message: 'Auto-order is not enabled for this user. Please enable it in preferences first.',
+          auto_order_enabled: preferences?.auto_order_enabled || false
+        } 
+      });
+    }
+
+    // Get all low-stock items
+    const lowStockItems = await Inventory.findLowInventory(userId);
+    
+    if (lowStockItems.length === 0) {
+      return res.json({
+        message: 'No low-stock items found',
+        itemsAdded: 0,
+        items: [],
+      });
+    }
+
+    // Get current cart items to avoid duplicates
+    const existingCartItems = await Cart.findByUser(userId);
+    const existingItemNames = new Set(existingCartItems.map(item => item.item_name.toLowerCase()));
+
+    const addedItems = [];
+    const skippedItems = [];
+    let errors = [];
+
+    // Add each low-stock item to cart if not already there
+    for (const lowItem of lowStockItems) {
+      // Skip if already in cart
+      if (existingItemNames.has(lowItem.item_name.toLowerCase())) {
+        logger.info(`[Auto-Order] Skipping ${lowItem.item_name} - already in cart`);
+        skippedItems.push({
+          item_name: lowItem.item_name,
+          reason: 'already_in_cart'
+        });
+        continue;
+      }
+
+      try {
+        // Determine reorder quantity (use last purchase quantity or default to 1)
+        const reorderQuantity = lowItem.last_purchase_quantity || 1;
+        
+        // Get price from catalog
+        const priceData = await priceService.getPriceForItem(lowItem.item_name);
+        
+        // Add to cart
+        const cartItem = await Cart.addItem({
+          user_id: userId,
+          item_name: lowItem.item_name,
+          quantity: reorderQuantity,
+          unit: lowItem.unit,
+          category: lowItem.category,
+          estimated_price: priceData.price,
+          notes: `Auto-added: Low stock (${lowItem.days_until_runout?.toFixed(1)} days until runout)`,
+          source: 'auto_order',
+        });
+
+        logger.info(`[Auto-Order] Added ${lowItem.item_name} to cart (${reorderQuantity} ${lowItem.unit})`);
+        
+        addedItems.push({
+          id: cartItem.id,
+          item_name: cartItem.item_name,
+          quantity: cartItem.quantity,
+          unit: cartItem.unit,
+          estimated_price: cartItem.estimated_price,
+          days_until_runout: lowItem.days_until_runout,
+        });
+      } catch (error) {
+        logger.error(`[Auto-Order] Failed to add ${lowItem.item_name} to cart:`, error);
+        errors.push({
+          item_name: lowItem.item_name,
+          error: error.message,
+        });
+      }
+    }
+
+    res.json({
+      message: `Auto-order complete: ${addedItems.length} items added to cart`,
+      itemsAdded: addedItems.length,
+      itemsSkipped: skippedItems.length,
+      totalLowStock: lowStockItems.length,
+      items: addedItems,
+      skipped: skippedItems,
+      errors: errors.length > 0 ? errors : undefined,
+    });
   } catch (error) {
     next(error);
   }

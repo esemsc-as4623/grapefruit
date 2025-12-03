@@ -189,6 +189,15 @@ class AutoOrderScheduler {
   }
 
   /**
+   * Job 4: Auto-add low stock items to cart (when auto-order is enabled)
+   * DISABLED: This functionality has been turned off to prevent automatic cart additions
+   */
+  async autoAddLowStockToCart() {
+    logger.info('Auto-add to cart is disabled - no items will be automatically added');
+    return { items_added: 0, users_processed: 0, disabled: true };
+  }
+
+  /**
    * Start all scheduled jobs
    */
   start() {
@@ -226,6 +235,10 @@ class AutoOrderScheduler {
       })
     );
 
+    // Job 4: Auto-add low stock items to cart - DISABLED
+    // This job has been intentionally disabled to prevent automatic cart additions
+    // The frontend preferences UI is kept for potential future use
+
     // Run all jobs immediately on startup
     logger.info('Running initial auto-order jobs...');
     this.detectZeroInventory().catch((err) =>
@@ -237,6 +250,7 @@ class AutoOrderScheduler {
     this.processDeliveries().catch((err) =>
       logger.error('Initial processDeliveries failed:', err)
     );
+    // autoAddLowStockToCart is disabled - not running on startup
 
     this.isRunning = true;
     logger.info('Auto-order scheduler started successfully');
@@ -281,6 +295,8 @@ class AutoOrderScheduler {
         return await this.processToOrder();
       case 'process_deliveries':
         return await this.processDeliveries();
+      case 'auto_add_low_stock_to_cart':
+        return await this.autoAddLowStockToCart();
       default:
         throw new Error(`Unknown job: ${jobName}`);
     }

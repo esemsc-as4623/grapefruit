@@ -34,10 +34,10 @@ CREATE TABLE IF NOT EXISTS consumption_history (
 );
 
 -- Indexes for efficient queries
-CREATE INDEX idx_consumption_user_item ON consumption_history(user_id, item_name);
-CREATE INDEX idx_consumption_timestamp ON consumption_history(timestamp DESC);
-CREATE INDEX idx_consumption_user_timestamp ON consumption_history(user_id, timestamp DESC);
-CREATE INDEX idx_consumption_event_type ON consumption_history(event_type);
+CREATE INDEX IF NOT EXISTS idx_consumption_user_item ON consumption_history(user_id, item_name);
+CREATE INDEX IF NOT EXISTS idx_consumption_timestamp ON consumption_history(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_consumption_user_timestamp ON consumption_history(user_id, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_consumption_event_type ON consumption_history(event_type);
 
 -- Add comment for documentation
 COMMENT ON TABLE consumption_history IS 'Tracks all inventory consumption events for ML-based learning of consumption patterns';

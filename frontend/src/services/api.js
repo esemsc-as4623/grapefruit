@@ -145,6 +145,12 @@ export const ordersAPI = {
     });
     return response.data;
   },
+
+  // Mark order as delivered
+  markDelivered: async (id) => {
+    const response = await api.put(`/orders/${id}/delivered`);
+    return response.data;
+  },
 };
 
 // ============================================

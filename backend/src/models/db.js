@@ -1,5 +1,7 @@
 const db = require('../config/database');
 const logger = require('../utils/logger');
+const { withTransaction } = require('../utils/transaction');
+
 
 /**
  * Inventory Model
@@ -12,7 +14,18 @@ class Inventory {
   static async findByUser(userId = 'demo_user') {
     try {
       const result = await db.query(
-        'SELECT * FROM inventory WHERE user_id = $1 ORDER BY category, item_name',
+        `SELECT * FROM inventory WHERE user_id = $1 
+         ORDER BY 
+           CASE category
+             WHEN 'dairy' THEN 1
+             WHEN 'produce' THEN 2
+             WHEN 'meat' THEN 3
+             WHEN 'bread' THEN 4
+             WHEN 'pantry' THEN 5
+             WHEN 'others' THEN 6
+             ELSE 7
+           END,
+           item_name`,
         [userId]
       );
       return result.rows;
@@ -279,6 +292,45 @@ class Inventory {
       throw error;
     }
   }
+
+  /**
+   * Bulk update inventory from receipt items (transactional)
+   * Ensures all items are updated together or none are updated
+   * @param {string} userId - User ID
+   * @param {Array} items - Array of {itemName, quantity, unit, category}
+   * @returns {Promise<Array>} - Array of updated/created inventory items
+   */
+  static async bulkUpdateFromReceipt(userId, items) {
+    return withTransaction(async (client) => {
+      const results = [];
+
+      for (const item of items) {
+        // Use INSERT ... ON CONFLICT to handle race conditions
+        // This is safer than SELECT then INSERT/UPDATE
+        const result = await client.query(
+          `INSERT INTO inventory (user_id, item_name, quantity, unit, category, last_purchase_date, last_purchase_quantity)
+           VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, $3)
+           ON CONFLICT (user_id, item_name)
+           DO UPDATE SET
+             quantity = inventory.quantity + EXCLUDED.quantity,
+             last_purchase_date = CURRENT_TIMESTAMP,
+             last_purchase_quantity = EXCLUDED.last_purchase_quantity,
+             last_updated = CURRENT_TIMESTAMP
+           RETURNING *`,
+          [userId, item.itemName, item.quantity, item.unit, item.category || 'others']
+        );
+        results.push(result.rows[0]);
+      }
+
+      logger.info('Bulk inventory update completed', {
+        userId,
+        itemCount: items.length,
+        resultsCount: results.length,
+      });
+
+      return results;
+    });
+  }
 }
 
 /**
@@ -307,35 +359,32 @@ class Preferences {
    */
   static async upsert(userId, prefsData) {
     const {
-      max_spend,
-      approval_mode,
-      auto_approve_limit,
       brand_prefs,
       allowed_vendors,
       notify_low_inventory,
       notify_order_ready,
+      auto_order_enabled,
+      auto_order_threshold_days,
     } = prefsData;
 
     try {
       const result = await db.query(
         `INSERT INTO preferences 
-         (user_id, max_spend, approval_mode, auto_approve_limit, brand_prefs, allowed_vendors, 
-          notify_low_inventory, notify_order_ready)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         (user_id, brand_prefs, allowed_vendors, 
+          notify_low_inventory, notify_order_ready, auto_order_enabled, auto_order_threshold_days)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT (user_id) 
          DO UPDATE SET
-           max_spend = EXCLUDED.max_spend,
-           approval_mode = EXCLUDED.approval_mode,
-           auto_approve_limit = EXCLUDED.auto_approve_limit,
            brand_prefs = EXCLUDED.brand_prefs,
            allowed_vendors = EXCLUDED.allowed_vendors,
            notify_low_inventory = EXCLUDED.notify_low_inventory,
            notify_order_ready = EXCLUDED.notify_order_ready,
+           auto_order_enabled = EXCLUDED.auto_order_enabled,
+           auto_order_threshold_days = EXCLUDED.auto_order_threshold_days,
            updated_at = CURRENT_TIMESTAMP
          RETURNING *`,
-        [userId, max_spend, approval_mode, auto_approve_limit, 
-         JSON.stringify(brand_prefs), JSON.stringify(allowed_vendors),
-         notify_low_inventory, notify_order_ready]
+        [userId, JSON.stringify(brand_prefs), JSON.stringify(allowed_vendors),
+         notify_low_inventory, notify_order_ready, auto_order_enabled, auto_order_threshold_days]
       );
       return result.rows[0];
     } catch (error) {
@@ -350,7 +399,8 @@ class Preferences {
   static async update(userId, updates) {
     const allowedFields = [
       'max_spend', 'approval_mode', 'auto_approve_limit', 'brand_prefs', 
-      'allowed_vendors', 'notify_low_inventory', 'notify_order_ready'
+      'allowed_vendors', 'notify_low_inventory', 'notify_order_ready',
+      'auto_order_enabled', 'auto_order_threshold_days'
     ];
     
     const fields = Object.keys(updates).filter(key => allowedFields.includes(key));
@@ -552,7 +602,7 @@ class Orders {
         `UPDATE orders 
          SET status = 'delivered',
              delivered_at = CURRENT_TIMESTAMP
-         WHERE id = $1 AND status = 'placed'
+         WHERE id = $1 AND status IN ('pending', 'approved', 'placed')
          RETURNING *`,
         [id]
       );
