@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  ocr-service:
+    build: .
+    container_name: ocr-microservice
+    ports:
+      - "8000:8000"
+    environment:
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}  # Optional: for LLM cleaning
+    volumes:
+      - ./onnx_models:/app/onnx_models  # Persist ONNX models
+      - ./receipts:/app/receipts  # Mount receipt folder
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G  # Adjust based on your needs (ONNX uses ~300MB)
+        reservations:
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
