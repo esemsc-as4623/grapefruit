@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle, Edit2, Plus, Trash2, AlertTriangle, Loader } from 'lucide-react';
+import { CheckCircle, Edit2, Trash2, AlertTriangle, Loader } from 'lucide-react';
 import api from '../services/api';
 
 const ReceiptReview = ({ receiptData, onApplied, onCancel }) => {

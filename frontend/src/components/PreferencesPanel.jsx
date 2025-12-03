@@ -1,9 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { preferencesAPI } from '../services/api';
 import { Settings, Star, Save, AlertCircle } from 'lucide-react';
 
 const PreferencesPanel = () => {
-  const [preferences, setPreferences] = useState(null); // Store loaded preferences
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -17,12 +16,11 @@ const PreferencesPanel = () => {
   const categories = ['dairy', 'produce', 'meat', 'pantry', 'bread', 'others'];
 
   // Load preferences
-  const loadPreferences = async () => {
+  const loadPreferences = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
       const data = await preferencesAPI.get();
-      setPreferences(data);
       
       // Set form values
       if (data.brand_prefs) setBrandPrefs(data.brand_prefs);
@@ -33,11 +31,11 @@ const PreferencesPanel = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadPreferences();
-  }, []);
+  }, [loadPreferences]);
 
   // Save preferences
   const handleSave = async () => {

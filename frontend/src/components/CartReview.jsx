@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { cartAPI, ordersAPI } from '../services/api';
-import { ShoppingCart, Check, X, Package, Trash2, Plus, Minus, DollarSign, Send, Clock, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { ShoppingCart, Check, Package, Trash2, Plus, Minus, Send, Clock, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
 
 const CartReview = () => {
   const [cartItems, setCartItems] = useState([]);
@@ -49,11 +49,11 @@ const CartReview = () => {
     }
   };
 
-  const loadAll = async () => {
+  const loadAll = useCallback(async () => {
     setLoading(true);
     await Promise.all([loadCart(), loadOrdersInTransit()]);
     setLoading(false);
-  };
+  }, []);
 
   useEffect(() => {
     loadAll();
@@ -63,7 +63,7 @@ const CartReview = () => {
       loadOrdersInTransit();
     }, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [loadAll]);
 
   // Update item quantity
   const handleUpdateQuantity = async (itemId, newQuantity) => {

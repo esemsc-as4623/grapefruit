@@ -12,7 +12,6 @@ const InventoryDashboard = () => {
   const [simulating, setSimulating] = useState(false);
   
   // Auto-order preferences
-  const [preferences, setPreferences] = useState(null);
   const [autoOrderEnabled, setAutoOrderEnabled] = useState(false);
   const [autoOrderThreshold, setAutoOrderThreshold] = useState(3);
   const [savingPreferences, setSavingPreferences] = useState(false);
@@ -39,28 +38,10 @@ const InventoryDashboard = () => {
   const loadPreferences = async () => {
     try {
       const data = await preferencesAPI.get();
-      setPreferences(data);
       setAutoOrderEnabled(data.auto_order_enabled || false);
       setAutoOrderThreshold(data.auto_order_threshold_days || 3);
     } catch (err) {
       console.error('Error loading preferences:', err);
-    }
-  };
-
-  // Save auto-order preferences
-  const handleSaveAutoOrderPreferences = async () => {
-    try {
-      setSavingPreferences(true);
-      await preferencesAPI.update({
-        auto_order_enabled: autoOrderEnabled,
-        auto_order_threshold_days: autoOrderThreshold,
-      });
-      await loadPreferences();
-    } catch (err) {
-      setError(err.response?.data?.error?.message || 'Failed to save auto-order settings');
-      console.error('Error saving preferences:', err);
-    } finally {
-      setSavingPreferences(false);
     }
   };
 
