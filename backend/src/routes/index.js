@@ -576,7 +576,7 @@ router.put('/orders/:id/placed', validateUUID('id'), async (req, res, next) => {
     const order = await Orders.markPlaced(req.params.id, vendor_order_id, tracking_number);
     
     if (!order) {
-      return res.status(404).json({ error: { message: 'Order not found or not approved' } });
+      return res.status(404).json({ error: { message: 'Order not found' } });
     }
     
     logger.info(`Order placed: ${order.id}`);
@@ -588,7 +588,7 @@ router.put('/orders/:id/placed', validateUUID('id'), async (req, res, next) => {
 
 /**
  * PUT /orders/:id/delivered
- * Mark order as delivered and add items to inventory using intelligent item matching
+ * Mark order as delivered and add items to inventory with exact name matching
  */
 router.put('/orders/:id/delivered', validateUUID('id'), async (req, res, next) => {
   try {
@@ -679,26 +679,59 @@ router.put('/orders/:id/delivered', validateUUID('id'), async (req, res, next) =
     
     logger.info(`Processing ${parsedItems.length} delivered items for order ${orderId}`);
     
-    // Use inventory matcher to find matches and apply to inventory
-    const { matchItems, applyToInventory } = require('../services/inventoryMatcher');
+    // Add items to inventory with exact name matching
+    const results = {
+      updated: [],
+      created: [],
+      errors: [],
+    };
     
-    // Match items against existing inventory using LLM intelligence
-    const matchResults = await matchItems(parsedItems, order.user_id, {
-      useLLM: true,                    // Use LLM for better matching
-      threshold: 0.6,                  // Minimum match confidence
-      autoApproveThreshold: 0.85,      // Auto-approve high confidence matches
-    });
-    
-    // Apply the matched items to inventory
-    const inventoryResults = await applyToInventory(matchResults, order.user_id);
+    // Process each item: check if exists, update quantity or create new
+    for (const item of parsedItems) {
+      try {
+        // Check if item with exact same name already exists for this user
+        const existingItem = await Inventory.findByName(order.user_id, item.item_name);
+        
+        if (existingItem) {
+          // Item exists - add to existing quantity
+          const newQuantity = parseFloat(existingItem.quantity) + item.quantity;
+          const updated = await Inventory.update(existingItem.id, {
+            quantity: newQuantity,
+            last_purchase_date: new Date(),
+            last_purchase_quantity: item.quantity,
+          });
+          results.updated.push(updated);
+          logger.info(`Updated ${item.item_name}: ${existingItem.quantity} + ${item.quantity} = ${newQuantity} ${item.unit}`);
+        } else {
+          // Item doesn't exist - create new entry
+          const created = await Inventory.create({
+            user_id: order.user_id,
+            item_name: item.item_name,
+            quantity: item.quantity,
+            unit: item.unit,
+            category: item.category,
+            average_daily_consumption: 0, // Will be calculated over time
+            last_purchase_date: new Date(),
+            last_purchase_quantity: item.quantity,
+          });
+          results.created.push(created);
+          logger.info(`Created ${item.item_name} (${item.quantity} ${item.unit}) in inventory`);
+        }
+      } catch (error) {
+        logger.error(`Error processing inventory item ${item.item_name}:`, error);
+        results.errors.push({
+          item_name: item.item_name,
+          error: error.message,
+        });
+      }
+    }
     
     // Combine results for response
     const summary = {
       totalItems: parsedItems.length,
-      updated: inventoryResults.updated.length,
-      created: inventoryResults.created.length,
-      errors: inventoryResults.errors.length,
-      needsReview: matchResults.needsReview.length,
+      updated: results.updated.length,
+      created: results.created.length,
+      errors: results.errors.length,
     };
     
     logger.info(`Order delivered: ${updatedOrder.id}`, summary);
@@ -707,10 +740,9 @@ router.put('/orders/:id/delivered', validateUUID('id'), async (req, res, next) =
       success: true,
       order: updatedOrder,
       inventoryUpdates: {
-        updated: inventoryResults.updated,
-        created: inventoryResults.created,
-        needsReview: matchResults.needsReview,
-        errors: inventoryResults.errors,
+        updated: results.updated,
+        created: results.created,
+        errors: results.errors,
       },
       summary,
       message: `Order marked as delivered. ${summary.updated} items updated, ${summary.created} items created in inventory.`,
