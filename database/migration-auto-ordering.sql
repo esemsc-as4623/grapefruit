@@ -90,75 +90,24 @@ CREATE INDEX idx_background_jobs_name ON background_jobs(job_name);
 CREATE INDEX idx_background_jobs_started_at ON background_jobs(started_at DESC);
 
 -- ============================================
--- SEED: Amazon Catalog Data
+-- ALTER preferences table for auto-ordering
 -- ============================================
-INSERT INTO amazon_catalog (item_name, category, price, unit, brand, in_stock) VALUES
--- Dairy
-('Whole Milk', 'dairy', 4.99, 'gallon', 'Organic Valley', true),
-('2% Milk', 'dairy', 4.49, 'gallon', 'Horizon', true),
-('Skim Milk', 'dairy', 4.29, 'gallon', 'Great Value', true),
-('Half and Half', 'dairy', 3.99, 'quart', 'Organic Valley', true),
-('Heavy Cream', 'dairy', 5.49, 'pint', 'Horizon', true),
-('Yogurt', 'dairy', 5.99, 'count', 'Chobani', true),
-('Butter', 'dairy', 6.99, 'lb', 'Kerrygold', true),
-('Cream Cheese', 'dairy', 3.49, 'count', 'Philadelphia', true),
-('Cheddar Cheese', 'dairy', 7.99, 'lb', 'Tillamook', true),
-('Eggs', 'dairy', 5.99, 'dozen', 'Organic Valley', true),
+ALTER TABLE preferences
+ADD COLUMN IF NOT EXISTS auto_order_enabled BOOLEAN DEFAULT false,
+ADD COLUMN IF NOT EXISTS auto_order_threshold_days INTEGER DEFAULT 3 CHECK (auto_order_threshold_days >= 0);
 
--- Produce
-('Bananas', 'produce', 0.59, 'lb', 'Fresh', true),
-('Apples', 'produce', 1.99, 'lb', 'Organic', true),
-('Oranges', 'produce', 1.49, 'lb', 'Fresh', true),
-('Strawberries', 'produce', 4.99, 'lb', 'Organic', true),
-('Blueberries', 'produce', 5.99, 'lb', 'Organic', true),
-('Avocados', 'produce', 1.99, 'count', 'Fresh', true),
-('Tomatoes', 'produce', 2.49, 'lb', 'Organic', true),
-('Lettuce', 'produce', 2.99, 'count', 'Fresh', true),
-('Spinach', 'produce', 3.99, 'lb', 'Organic', true),
-('Carrots', 'produce', 1.99, 'lb', 'Fresh', true),
-('Broccoli', 'produce', 2.49, 'lb', 'Fresh', true),
-('Potatoes', 'produce', 3.99, 'bag', 'Russet', true),
-('Onions', 'produce', 1.99, 'lb', 'Yellow', true),
-('Garlic', 'produce', 0.99, 'count', 'Fresh', true),
+CREATE INDEX IF NOT EXISTS idx_preferences_auto_order ON preferences(user_id, auto_order_enabled);
 
--- Beverages
-('Ground Coffee', 'beverages', 12.99, 'lb', 'Starbucks', true),
-('Coffee Beans', 'beverages', 14.99, 'lb', 'Peet''s', true),
-('Orange Juice', 'beverages', 5.99, 'half-gallon', 'Tropicana', true),
-('Apple Juice', 'beverages', 4.99, 'half-gallon', 'Mott''s', true),
-('Sparkling Water', 'beverages', 6.99, 'case', 'La Croix', true),
-('Green Tea', 'beverages', 5.99, 'count', 'Lipton', true),
-('Soda', 'beverages', 7.99, 'case', 'Coca-Cola', true),
-
--- Pantry
-('Bread', 'pantry', 5.99, 'loaf', 'Dave''s Killer Bread', true),
-('Pasta', 'pantry', 2.99, 'lb', 'Barilla', true),
-('Rice', 'pantry', 8.99, 'bag', 'Jasmine', true),
-('Flour', 'pantry', 6.99, 'bag', 'King Arthur', true),
-('Sugar', 'pantry', 3.99, 'bag', 'Domino', true),
-('Olive Oil', 'pantry', 12.99, 'bottle', 'California Olive Ranch', true),
-('Peanut Butter', 'pantry', 6.99, 'jar', 'Skippy', true),
-('Honey', 'pantry', 8.99, 'jar', 'Local', true),
-('Maple Syrup', 'pantry', 11.99, 'bottle', 'Pure', true),
-('Oatmeal', 'pantry', 5.99, 'container', 'Quaker', true),
-('Cereal', 'pantry', 5.99, 'box', 'General Mills', true),
-
--- Frozen
-('Frozen Pizza', 'frozen', 7.99, 'count', 'DiGiorno', true),
-('Ice Cream', 'frozen', 6.99, 'pint', 'Ben & Jerry''s', true),
-('Frozen Vegetables', 'frozen', 3.99, 'bag', 'Green Giant', true),
-('Frozen Berries', 'frozen', 5.99, 'bag', 'Organic', true),
-
--- Household
-('Paper Towels', 'household', 19.99, 'pack', 'Bounty', true),
-('Toilet Paper', 'household', 24.99, 'pack', 'Charmin', true),
-('Dish Soap', 'household', 4.99, 'bottle', 'Dawn', true),
-('Laundry Detergent', 'household', 14.99, 'bottle', 'Tide', true),
-('Trash Bags', 'household', 12.99, 'box', 'Glad', true)
-ON CONFLICT (item_name) DO NOTHING;
+COMMENT ON COLUMN preferences.auto_order_enabled IS 'Enable automatic ordering when inventory runs low';
+COMMENT ON COLUMN preferences.auto_order_threshold_days IS 'Number of days before runout to trigger auto-order (default: 3)';
 
 -- ============================================
--- FUNCTION: Auto-detect zero inventory items
+-- NOTE: Amazon catalog is populated by seed-grocery-catalog.sql
+-- which runs after this migration (06-seed-grocery-catalog.sql)
+-- ============================================
+
+-- ============================================
+-- FUNCTION: Auto-detect low inventory items based on user preferences
 -- ============================================
 CREATE OR REPLACE FUNCTION detect_zero_inventory()
 RETURNS TABLE (
@@ -169,17 +118,29 @@ DECLARE
     v_items_added INTEGER := 0;
     v_items JSONB := '[]'::jsonb;
     v_item RECORD;
+    v_pref RECORD;
 BEGIN
-    -- Find inventory items at zero that aren't already in to_order
+    -- Find inventory items that meet auto-order criteria
     FOR v_item IN
         SELECT i.id, i.user_id, i.item_name, i.unit, i.category,
                i.last_purchase_quantity,
+               i.predicted_runout,
                -- Default reorder quantity: last purchase quantity or 1
-               COALESCE(i.last_purchase_quantity, 1.0) as reorder_qty
+               COALESCE(i.last_purchase_quantity, 1.0) as reorder_qty,
+               p.auto_order_enabled,
+               p.auto_order_threshold_days
         FROM inventory i
         LEFT JOIN to_order t ON t.inventory_id = i.id AND t.status IN ('pending', 'ordered')
-        WHERE i.quantity <= 0
-          AND t.id IS NULL
+        LEFT JOIN preferences p ON p.user_id = i.user_id
+        WHERE t.id IS NULL  -- Not already in to_order
+          AND (
+            -- Check if auto-order is enabled for this user
+            (p.auto_order_enabled = true AND i.predicted_runout IS NOT NULL
+             AND i.predicted_runout <= CURRENT_DATE + INTERVAL '1 day' * COALESCE(p.auto_order_threshold_days, 3))
+            OR
+            -- Always add items at zero quantity regardless of auto-order setting
+            (i.quantity <= 0)
+          )
     LOOP
         -- Insert into to_order
         INSERT INTO to_order (
@@ -193,7 +154,8 @@ BEGIN
         v_items := v_items || jsonb_build_object(
             'item_name', v_item.item_name,
             'quantity', v_item.reorder_qty,
-            'unit', v_item.unit
+            'unit', v_item.unit,
+            'predicted_runout', v_item.predicted_runout
         );
     END LOOP;
 
@@ -381,7 +343,7 @@ ORDER BY t.detected_at ASC;
 
 CREATE OR REPLACE VIEW orders_pending_delivery AS
 SELECT o.*,
-       EXTRACT(DAY FROM (o.delivery_date - CURRENT_DATE)) as days_until_delivery
+       (o.delivery_date - CURRENT_DATE) as days_until_delivery
 FROM orders o
 WHERE o.status = 'placed'
   AND o.delivery_date IS NOT NULL
