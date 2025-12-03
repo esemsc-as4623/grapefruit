@@ -361,16 +361,9 @@ describe('Grapefruit Backend Integration Tests', () => {
       expect(Array.isArray(response.body.orders)).toBe(true);
     });
 
-    test('GET /orders/pending should return pending orders', async () => {
-      const response = await request(app).get('/orders/pending');
-      expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('orders');
-    });
+    // Note: No pending orders endpoint - orders go directly from cart to placed status
 
     test('POST /orders should create new order', async () => {
-      // First set manual approval mode to prevent auto-approval
-      await request(app).put('/preferences').send({ approval_mode: 'manual' });
-      
       const order = {
         vendor: 'walmart',
         items: [
@@ -387,38 +380,29 @@ describe('Grapefruit Backend Integration Tests', () => {
       expect(response.status).toBe(201);
       expect(response.body).toHaveProperty('id');
       expect(response.body.vendor).toBe('walmart');
-      expect(response.body.status).toBe('pending');
+      expect(response.body.status).toBe('placed'); // Orders are immediately placed, not pending
       
       testOrderId = response.body.id;
     });
 
-    test('PUT /orders/:id/approve should approve pending order', async () => {
-      const response = await request(app)
-        .put(`/orders/${testOrderId}/approve`)
-        .send({ notes: 'Test approval' });
-      
-      expect(response.status).toBe(200);
-      expect(response.body.status).toBe('approved');
-      expect(response.body).toHaveProperty('approved_at');
-    });
+    // Note: No order approval step - orders go directly from cart to placed status
 
-    test('PUT /orders/:id/placed should mark order as placed', async () => {
+    test('PUT /orders/:id/delivered should mark order as delivered and add to inventory', async () => {
       const response = await request(app)
-        .put(`/orders/${testOrderId}/placed`)
-        .send({ 
-          vendor_order_id: 'TEST-ORDER-123',
-          tracking_number: 'TRACK-456',
-        });
+        .put(`/orders/${testOrderId}/delivered`)
+        .send({});
       
       expect(response.status).toBe(200);
-      expect(response.body.status).toBe('placed');
-      expect(response.body.vendor_order_id).toBe('TEST-ORDER-123');
+      expect(response.body.order.status).toBe('delivered');
+      expect(response.body).toHaveProperty('inventoryUpdates');
+      expect(response.body.summary.totalItems).toBeGreaterThan(0);
     });
 
     test('GET /orders/:id should return specific order', async () => {
       const response = await request(app).get(`/orders/${testOrderId}`);
       expect(response.status).toBe(200);
       expect(response.body.id).toBe(testOrderId);
+      expect(response.body.status).toBe('delivered'); // Should be delivered from previous test
     });
   });
 
