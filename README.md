@@ -28,9 +28,6 @@ cp .env.example .env
 # Start all services with Docker (fresh installation)
 docker compose up -d
 
-# Wait ~15 seconds for database initialization to complete
-sleep 15
-
 # Verify the application is running
 curl http://localhost:5000/health
 curl http://localhost:5000/inventory
@@ -42,21 +39,19 @@ curl http://localhost:5000/inventory
 
 ### ⚠️ Important: First-Time Setup
 
-The database is **automatically initialized** on first startup. However, if you experience issues or the database already exists from a previous installation:
+The database is **automatically initialized** on first startup. You can always delete these from the inventory and start afresh by adding your inventory items. If you experience issues or the database already exists from a previous installation:
 
 ```bash
 # RECOMMENDED: Complete reset for a fresh start
 docker compose down              # Stop all containers
 docker volume rm grapefruit_postgres_data  # Remove old database
-docker compose up -d             # Start fresh with auto-initialization
-
-# Wait for initialization (all 6 SQL scripts run automatically)
-sleep 15
+docker compose up -d --build     # Rebuild images and start services
 
 # Verify database is properly initialized
 docker exec -it grapefruit-db psql -U grapefruit -d grapefruit -c "\dt"
 # Should show 8 tables: inventory, cart, orders, preferences, 
 #                       consumption_history, amazon_catalog, to_order, background_jobs
+# TODO: audit_logs, llm_cache, schema_migrations?
 
 # Check inventory has sample data
 docker exec -it grapefruit-db psql -U grapefruit -d grapefruit -c "SELECT COUNT(*) FROM inventory;"

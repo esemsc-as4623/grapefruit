@@ -81,7 +81,7 @@ services:
   # OCR Service (Python)
   ocr-service:
     build:
-      context: ./akedo_demo
+      context: ./edge-OCR
       dockerfile: Dockerfile
     container_name: grapefruit-ocr
     restart: unless-stopped
@@ -89,7 +89,7 @@ services:
       GOOGLE_API_KEY: ${GOOGLE_API_KEY}
     volumes:
       - ocr_models:/app/onnx_models
-      - ./akedo_demo/receipts:/app/receipts
+      - ./edge-OCR/receipts:/app/receipts
     ports:
       - "8000:8000"
     healthcheck:
