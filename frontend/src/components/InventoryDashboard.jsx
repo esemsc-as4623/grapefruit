@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { inventoryAPI, simulationAPI, cartAPI, preferencesAPI } from '../services/api';
+import { inventoryAPI, simulationAPI, cartAPI, preferencesAPI, autoOrderAPI } from '../services/api';
 import { Package, AlertTriangle, TrendingDown, Calendar, RefreshCw, Trash2, ShoppingCart, Sliders, Zap } from 'lucide-react';
 
 const InventoryDashboard = () => {
@@ -112,6 +112,121 @@ const InventoryDashboard = () => {
     });
     setLowStock(filtered);
   }, [inventory, lowStockThreshold]);
+
+  // Auto-order: Add low stock items to cart when enabled
+  useEffect(() => {
+    const handleAutoOrder = async () => {
+      if (!autoOrderEnabled) return;
+      
+      console.log('[Auto-Order] Starting auto-order process (enabled)');
+      
+      try {
+        // Get current cart items to check what's already in cart
+        const cartData = await cartAPI.getAll();
+        const cartItems = cartData.items || [];
+        const cartItemNames = cartItems.map(item => item.item_name.toLowerCase());
+        
+        console.log('[Auto-Order] Current cart items:', cartItemNames);
+        
+        // Get items from both sources:
+        // 1. Frontend low stock detection
+        // 2. Backend to_order table (items detected by scheduled job)
+        
+        let itemsToAdd = [];
+        
+        // Source 1: Frontend low stock items
+        if (lowStock.length > 0) {
+          console.log('[Auto-Order] Frontend low stock items:', lowStock.map(item => ({ 
+            name: item.item_name, 
+            runout: item.predicted_runout,
+            daysUntilRunout: item.predicted_runout ? 
+              Math.ceil((new Date(item.predicted_runout) - new Date()) / (1000 * 60 * 60 * 24)) : 
+              'N/A'
+          })));
+          
+          const frontendItems = lowStock.filter(item => 
+            !cartItemNames.includes(item.item_name.toLowerCase())
+          );
+          itemsToAdd.push(...frontendItems);
+        }
+        
+        // Source 2: Backend to_order table
+        try {
+          const toOrderData = await autoOrderAPI.getToOrder('pending');
+          const toOrderItems = toOrderData.items || [];
+          
+          console.log('[Auto-Order] Backend to_order items:', toOrderItems.map(item => ({ 
+            name: item.item_name, 
+            status: item.status,
+            detected: item.detected_at
+          })));
+          
+          // Add to_order items that aren't already in cart
+          // Convert to_order format to inventory format for consistency
+          const backendItems = toOrderItems
+            .filter(item => !cartItemNames.includes(item.item_name.toLowerCase()))
+            .map(item => ({
+              item_name: item.item_name,
+              unit: item.unit,
+              category: item.category,
+              source: 'backend_to_order'
+            }));
+          
+          itemsToAdd.push(...backendItems);
+        } catch (err) {
+          console.error('[Auto-Order] Error fetching to_order items:', err);
+        }
+        
+        // Remove duplicates (same item from both sources)
+        const uniqueItemsToAdd = itemsToAdd.filter((item, index, self) => 
+          index === self.findIndex(t => t.item_name.toLowerCase() === item.item_name.toLowerCase())
+        );
+        
+        console.log('[Auto-Order] Unique items to add:', uniqueItemsToAdd.map(item => item.item_name));
+        
+        if (uniqueItemsToAdd.length === 0) {
+          console.log('[Auto-Order] No new items to add - all auto-order items already in cart');
+          return;
+        }
+        
+        // Add each missing item to cart
+        for (const item of uniqueItemsToAdd) {
+          try {
+            console.log(`[Auto-Order] Adding ${item.item_name} to cart...`);
+            
+            const itemData = {
+              item_name: item.item_name,
+              unit: item.unit,
+              category: item.category,
+              source: item.source || 'auto_order',
+              use_llm_pricing: true, // Let LLM suggest quantity and price
+            };
+            
+            console.log(`[Auto-Order] Item data:`, itemData);
+            
+            await cartAPI.addItem(itemData);
+            
+            console.log(`[Auto-Order] Successfully added ${item.item_name} to cart`);
+          } catch (err) {
+            console.error(`[Auto-Order] Failed to auto-add ${item.item_name} to cart:`, err);
+            console.error(`[Auto-Order] Error details:`, err.response?.data);
+          }
+        }
+        
+        if (uniqueItemsToAdd.length > 0) {
+          console.log(`[Auto-Order] Completed: Added ${uniqueItemsToAdd.length} items to cart`);
+        }
+        
+      } catch (err) {
+        console.error('[Auto-Order] Error in auto-order process:', err);
+      }
+    };
+    
+    // Run auto-order if enabled (regardless of lowStock count since we also check backend to_order)
+    if (autoOrderEnabled) {
+      handleAutoOrder();
+    }
+  }, [autoOrderEnabled, lowStock]);
 
   // Simulate a day
   const handleSimulateDay = async () => {

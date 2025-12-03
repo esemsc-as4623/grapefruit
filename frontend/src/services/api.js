@@ -184,6 +184,19 @@ export const cartAPI = {
 };
 
 // ============================================
+// AUTO-ORDER ENDPOINTS
+// ============================================
+
+export const autoOrderAPI = {
+  // Get items in to_order queue
+  getToOrder: async (status = null) => {
+    const params = status ? `?status=${status}` : '';
+    const response = await api.get(`/auto-order/to-order${params}`);
+    return response.data;
+  },
+};
+
+// ============================================
 // SIMULATION ENDPOINTS
 // ============================================
 

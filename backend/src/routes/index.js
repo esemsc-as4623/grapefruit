@@ -72,7 +72,7 @@ const cartItemSchema = Joi.object({
   category: Joi.string().max(100).optional(),
   estimated_price: Joi.number().min(0).optional(),
   notes: Joi.string().max(500).optional(),
-  source: Joi.string().valid('manual', 'trash', 'deplete', 'cart_icon').optional(),
+  source: Joi.string().valid('manual', 'trash', 'deplete', 'cart_icon', 'auto_order', 'backend_to_order').optional(),
   use_llm_pricing: Joi.boolean().optional().default(true), // Enable LLM pricing by default
 });
 
