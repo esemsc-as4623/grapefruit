@@ -1,0 +1,17 @@
+# Core FastAPI service
+fastapi
+uvicorn
+python-multipart
+
+# Image processing and OCR
+Pillow
+opencv-python
+imutils
+pytesseract
+easyocr
+paddleocr
+google-generativeai>=0.3.0
+
+# Utilities
+requests
+python-dotenv

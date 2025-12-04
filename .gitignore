@@ -140,3 +140,15 @@ vite.config.ts.timestamp-*
 
 # macOS system files
 .DS_Store
+
+# Python virtual environments and cache
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# AKEDO BOUNTY: Encryption keys (NEVER commit!)
+.encryption-key
+backend/.encryption-key
+backend/src/.encryption-key
+**/encryption-key

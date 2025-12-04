@@ -3,6 +3,44 @@
 ## Overview
 PostgreSQL database schema for Grapefruit AI Shopping Assistant. Designed for demo/hackathon with focus on core functionality and extensibility.
 
+## Automatic Initialization
+
+The database is **automatically initialized** when you run `docker compose up`. The initialization scripts are executed in the following order:
+
+1. **01-init.sql** - Creates core schema (inventory, preferences, orders tables, views, triggers)
+2. **02-add-cart.sql** - Adds shopping cart table
+3. **03-add-consumption.sql** - Adds consumption history tracking
+4. **04-auto-ordering.sql** - Creates auto-ordering system and Amazon catalog table
+5. **05-seed.sql** - Loads demo data for inventory, preferences, and orders
+6. **06-seed-grocery-catalog.sql** - Populates Amazon grocery catalog with 1000+ items
+
+All scripts are idempotent and use `CREATE TABLE IF NOT EXISTS`, so they can be safely re-run. The initialization only happens on first container creation or after volumes are removed.
+
+### Verifying Initialization
+
+After starting the database, you can verify it was initialized correctly:
+
+```bash
+# Run verification script
+docker exec -i grapefruit-db psql -U grapefruit -d grapefruit < database/verify-init.sql
+
+# Or manually check
+docker exec -it grapefruit-db psql -U grapefruit -d grapefruit -c "\dt"  # List tables
+docker exec -it grapefruit-db psql -U grapefruit -d grapefruit -c "SELECT COUNT(*) FROM amazon_catalog;"
+```
+
+### Resetting the Database
+
+```bash
+# Complete reset (removes all data)
+docker compose down -v
+docker compose up -d
+
+# Or manually truncate tables while keeping schema
+docker exec -it grapefruit-db psql -U grapefruit -d grapefruit
+# Then run: TRUNCATE TABLE inventory, preferences, orders, cart, to_order CASCADE;
+```
+
 ## Schema Design
 
 ### Tables

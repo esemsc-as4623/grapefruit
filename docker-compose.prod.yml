@@ -1,0 +1,161 @@
+# Production Docker Compose Configuration
+# Optimized for production deployment with no dev volume mounts
+# and proper healthchecks
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: grapefruit-db-prod
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Database initialization scripts
+      - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./database/add_cart_table.sql:/docker-entrypoint-initdb.d/02-add-cart.sql:ro
+      - ./database/add_consumption_history.sql:/docker-entrypoint-initdb.d/03-add-consumption.sql:ro
+      - ./database/migration-auto-ordering.sql:/docker-entrypoint-initdb.d/04-auto-ordering.sql:ro
+      - ./database/seed.sql:/docker-entrypoint-initdb.d/05-seed.sql:ro
+      - ./database/seed-grocery-catalog.sql:/docker-entrypoint-initdb.d/06-seed-grocery-catalog.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - grapefruit-network
+
+  # Backend API Server
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: production
+    container_name: grapefruit-backend-prod
+    restart: always
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      HOST: 0.0.0.0
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      LOG_LEVEL: ${LOG_LEVEL:-warn}
+      # LLM API Configuration
+      ASI_API_KEY: ${ASI_API_KEY}
+      ASI_BASE_URL: ${ASI_BASE_URL:-https://inference.asicloud.cudos.org/v1}
+      ASI_MODEL: ${ASI_MODEL:-asi1-mini}
+      LLM_DEBUG: false
+      LLM_CACHE_ENABLED: ${LLM_CACHE_ENABLED:-true}
+      # OCR Service Configuration
+      OCR_SERVICE_URL: http://ocr-service:8000
+    ports:
+      - "${BACKEND_PORT:-5000}:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ocr-service:
+        condition: service_healthy
+    volumes:
+      # Only mount logs directory (read-write for application logs)
+      - backend_logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    networks:
+      - grapefruit-network
+    # Resource limits for production
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # OCR Service (Python)
+  ocr-service:
+    build:
+      context: ./edge-OCR
+      dockerfile: Dockerfile
+    container_name: grapefruit-ocr-prod
+    restart: always
+    environment:
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 1G
+    networks:
+      - grapefruit-network
+
+  # Frontend (React with Nginx)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: production
+    container_name: grapefruit-frontend-prod
+    restart: always
+    environment:
+      REACT_APP_API_URL: ${REACT_APP_API_URL:-http://localhost:5000}
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+      ocr-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    networks:
+      - grapefruit-network
+    # Resource limits for production
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+volumes:
+  postgres_data:
+    driver: local
+  backend_logs:
+    driver: local
+  ocr_models:
+    driver: local
+
+networks:
+  grapefruit-network:
+    driver: bridge

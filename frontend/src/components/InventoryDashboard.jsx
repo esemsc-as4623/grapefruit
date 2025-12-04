@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { inventoryAPI, simulationAPI, cartAPI } from '../services/api';
-import { Package, AlertTriangle, TrendingDown, Calendar, RefreshCw, Trash2, ShoppingCart, Sliders } from 'lucide-react';
+import { inventoryAPI, simulationAPI, cartAPI, preferencesAPI, autoOrderAPI } from '../services/api';
+import { Package, AlertTriangle, TrendingDown, Calendar, RefreshCw, Trash2, ShoppingCart, Sliders, Zap } from 'lucide-react';
 
 const InventoryDashboard = () => {
   const location = useLocation();
@@ -10,6 +10,15 @@ const InventoryDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [simulating, setSimulating] = useState(false);
+  
+  // Auto-order preferences
+  const [autoOrderEnabled, setAutoOrderEnabled] = useState(false);
+  const [autoOrderThreshold, setAutoOrderThreshold] = useState(3);
+  const [savingPreferences, setSavingPreferences] = useState(false);
+  
+  // Computed threshold for low stock warning (use auto-order threshold if enabled, otherwise default to 3)
+  const lowStockThreshold = autoOrderEnabled ? autoOrderThreshold : 3;
+  
   // Get sort preference from localStorage or use default
   const [sortBy, setSortBy] = useState(() => {
     const saved = localStorage.getItem('inventorySortBy');
@@ -24,6 +33,39 @@ const InventoryDashboard = () => {
   useEffect(() => {
     localStorage.setItem('inventorySortBy', sortBy);
   }, [sortBy]);
+
+  // Load preferences
+  const loadPreferences = async () => {
+    try {
+      const data = await preferencesAPI.get();
+      setAutoOrderEnabled(data.auto_order_enabled || false);
+      setAutoOrderThreshold(data.auto_order_threshold_days || 3);
+    } catch (err) {
+      console.error('Error loading preferences:', err);
+    }
+  };
+
+  // Toggle auto-order
+  const handleToggleAutoOrder = async () => {
+    const newValue = !autoOrderEnabled;
+    setAutoOrderEnabled(newValue);
+    
+    try {
+      setSavingPreferences(true);
+      await preferencesAPI.update({
+        auto_order_enabled: newValue,
+        auto_order_threshold_days: autoOrderThreshold,
+      });
+      await loadPreferences();
+    } catch (err) {
+      // Revert on error
+      setAutoOrderEnabled(!newValue);
+      setError(err.response?.data?.error?.message || 'Failed to toggle auto-order');
+      console.error('Error toggling auto-order:', err);
+    } finally {
+      setSavingPreferences(false);
+    }
+  };
 
   // Load inventory data
   const loadInventory = async () => {
@@ -40,15 +82,132 @@ const InventoryDashboard = () => {
     }
   };
 
-  // Load low stock items
-  const loadLowStock = async () => {
-    try {
-      const data = await inventoryAPI.getLowStock();
-      setLowStock(data.items || []);
-    } catch (err) {
-      console.error('Error loading low stock:', err);
+  // Filter low stock items from inventory based on current threshold
+  useEffect(() => {
+    const filtered = inventory.filter(item => {
+      if (!item.predicted_runout) return false;
+      const runoutDate = new Date(item.predicted_runout);
+      const now = new Date();
+      const daysUntilRunout = (runoutDate - now) / (1000 * 60 * 60 * 24);
+      return daysUntilRunout <= lowStockThreshold && daysUntilRunout >= 0;
+    });
+    setLowStock(filtered);
+  }, [inventory, lowStockThreshold]);
+
+  // Auto-order: Add low stock items to cart when enabled
+  useEffect(() => {
+    const handleAutoOrder = async () => {
+      if (!autoOrderEnabled) return;
+      
+      console.log('[Auto-Order] Starting auto-order process (enabled)');
+      
+      try {
+        // Get current cart items to check what's already in cart
+        const cartData = await cartAPI.getAll();
+        const cartItems = cartData.items || [];
+        const cartItemNames = cartItems.map(item => item.item_name.toLowerCase());
+        
+        console.log('[Auto-Order] Current cart items:', cartItemNames);
+        
+        // Get items from both sources:
+        // 1. Frontend low stock detection
+        // 2. Backend to_order table (items detected by scheduled job)
+        
+        let itemsToAdd = [];
+        
+        // Source 1: Frontend low stock items
+        if (lowStock.length > 0) {
+          console.log('[Auto-Order] Frontend low stock items:', lowStock.map(item => ({ 
+            name: item.item_name, 
+            runout: item.predicted_runout,
+            daysUntilRunout: item.predicted_runout ? 
+              Math.ceil((new Date(item.predicted_runout) - new Date()) / (1000 * 60 * 60 * 24)) : 
+              'N/A'
+          })));
+          
+          const frontendItems = lowStock.filter(item => 
+            !cartItemNames.includes(item.item_name.toLowerCase())
+          );
+          itemsToAdd.push(...frontendItems);
+        }
+        
+        // Source 2: Backend to_order table
+        try {
+          const toOrderData = await autoOrderAPI.getToOrder('pending');
+          const toOrderItems = toOrderData.items || [];
+          
+          console.log('[Auto-Order] Backend to_order items:', toOrderItems.map(item => ({ 
+            name: item.item_name, 
+            status: item.status,
+            detected: item.detected_at
+          })));
+          
+          // Add to_order items that aren't already in cart
+          // Convert to_order format to inventory format for consistency
+          const backendItems = toOrderItems
+            .filter(item => !cartItemNames.includes(item.item_name.toLowerCase()))
+            .map(item => ({
+              item_name: item.item_name,
+              unit: item.unit,
+              category: item.category,
+              source: 'backend_to_order'
+            }));
+          
+          itemsToAdd.push(...backendItems);
+        } catch (err) {
+          console.error('[Auto-Order] Error fetching to_order items:', err);
+        }
+        
+        // Remove duplicates (same item from both sources)
+        const uniqueItemsToAdd = itemsToAdd.filter((item, index, self) => 
+          index === self.findIndex(t => t.item_name.toLowerCase() === item.item_name.toLowerCase())
+        );
+        
+        console.log('[Auto-Order] Unique items to add:', uniqueItemsToAdd.map(item => item.item_name));
+        
+        if (uniqueItemsToAdd.length === 0) {
+          console.log('[Auto-Order] No new items to add - all auto-order items already in cart');
+          return;
+        }
+        
+        // Add each missing item to cart
+        for (const item of uniqueItemsToAdd) {
+          try {
+            console.log(`[Auto-Order] Adding ${item.item_name} to cart...`);
+            
+            const itemData = {
+              item_name: item.item_name,
+              unit: item.unit,
+              category: item.category,
+              source: item.source || 'auto_order',
+              use_llm_pricing: true, // Let LLM suggest quantity and price
+            };
+            
+            console.log(`[Auto-Order] Item data:`, itemData);
+            
+            await cartAPI.addItem(itemData);
+            
+            console.log(`[Auto-Order] Successfully added ${item.item_name} to cart`);
+          } catch (err) {
+            console.error(`[Auto-Order] Failed to auto-add ${item.item_name} to cart:`, err);
+            console.error(`[Auto-Order] Error details:`, err.response?.data);
+          }
+        }
+        
+        if (uniqueItemsToAdd.length > 0) {
+          console.log(`[Auto-Order] Completed: Added ${uniqueItemsToAdd.length} items to cart`);
+        }
+        
+      } catch (err) {
+        console.error('[Auto-Order] Error in auto-order process:', err);
+      }
+    };
+    
+    // Run auto-order if enabled (regardless of lowStock count since we also check backend to_order)
+    if (autoOrderEnabled) {
+      handleAutoOrder();
     }
-  };
+  }, [autoOrderEnabled, lowStock]);
 
   // Simulate a day
   const handleSimulateDay = async () => {
@@ -57,7 +216,6 @@ const InventoryDashboard = () => {
       await simulationAPI.simulateDay();
       // Reload data after simulation
       await loadInventory();
-      await loadLowStock();
     } catch (err) {
       setError(err.response?.data?.error?.message || 'Simulation failed');
     } finally {
@@ -67,62 +225,11 @@ const InventoryDashboard = () => {
 
   // Delete item from inventory
   const handleDeleteItem = async (itemId, itemName) => {
-    // Show confirmation prompt
-    setConfirmingDelete({ id: itemId, name: itemName });
-  };
-
-  // Confirm deletion without adding to order
-  const handleConfirmDelete = async (itemId) => {
     try {
       await inventoryAPI.delete(itemId);
       
       // Reload inventory after deletion
       await loadInventory();
-      await loadLowStock();
-      
-      // Clear confirmation state
-      setConfirmingDelete(null);
-    } catch (err) {
-      setError(err.response?.data?.error?.message || 'Failed to delete item');
-      console.error('Error deleting item:', err);
-    }
-  };
-
-  // Delete item and add to order
-  const handleDeleteAndAddToOrder = async (itemId, itemName) => {
-    try {
-      // Get the item details - either from confirmingDelete.item or from inventory
-      let item = confirmingDelete?.item;
-      if (!item) {
-        item = inventory.find(i => i.id === itemId);
-      }
-      if (!item) {
-        throw new Error('Item not found');
-      }
-
-      // Determine source based on confirmingDelete
-      const source = confirmingDelete?.source || 'trash';
-
-      // Add to cart with quantity of 1
-      await cartAPI.addItem({
-        item_name: item.item_name,
-        quantity: 1,
-        unit: item.unit,
-        category: item.category,
-        source: source,
-      });
-      
-      await inventoryAPI.delete(itemId);
-      
-      // Reload inventory after deletion
-      await loadInventory();
-      await loadLowStock();
-      
-      // Clear confirmation state
-      setConfirmingDelete(null);
-      
-      // Show success message
-      setError(null);
     } catch (err) {
       setError(err.response?.data?.error?.message || 'Failed to delete item');
       console.error('Error deleting item:', err);
@@ -134,29 +241,24 @@ const InventoryDashboard = () => {
     try {
       await cartAPI.addItem({
         item_name: item.item_name,
-        quantity: 1, // Default quantity
-        unit: item.unit,
+        unit: item.unit, // Use unit from inventory
         category: item.category,
         source: 'cart_icon',
+        use_llm_pricing: true, // Let LLM suggest quantity and price
       });
       
       // Show success feedback (you could add a toast notification here)
-      console.log(`Added ${item.item_name} to cart`);
+      console.log(`Added ${item.item_name} to cart with LLM-suggested pricing`);
     } catch (err) {
       setError(err.response?.data?.error?.message || 'Failed to add item to cart');
       console.error('Error adding to cart:', err);
     }
   };
 
-  // Cancel deletion
-  const handleCancelDelete = () => {
-    setConfirmingDelete(null);
-  };
-
   // Get step size based on unit
   const getStepSize = (unit) => {
-    const wholeNumberUnits = ['count', 'can'];
-    const quarterUnits = ['package', 'box', 'bottle'];
+    const wholeNumberUnits = ['count', 'can', 'each', 'box', 'package'];
+    const quarterUnits = ['bottle'];
     const halfUnits = ['gallon', 'liter', 'quart'];
     const fineUnits = ['ounce', 'pound', 'lb', 'oz'];
 
@@ -196,7 +298,6 @@ const InventoryDashboard = () => {
         
         // Reload inventory after update
         await loadInventory();
-        await loadLowStock();
         
         // Exit depletion mode
         setDepletingItem(null);
@@ -210,7 +311,7 @@ const InventoryDashboard = () => {
 
   useEffect(() => {
     loadInventory();
-    loadLowStock();
+    loadPreferences();
   }, []);
 
   // Format date for display
@@ -250,8 +351,8 @@ const InventoryDashboard = () => {
       produce: { icon: '🥬', color: 'bg-green-50' },
       meat: { icon: '🥩', color: 'bg-red-50' },
       pantry: { icon: '🥫', color: 'bg-yellow-50' },
-      beverages: { icon: '🥤', color: 'bg-purple-50' },
-      snacks: { icon: '🍿', color: 'bg-orange-50' },
+      bread: { icon: '🍞', color: 'bg-amber-50' },
+      others: { icon: '📦', color: 'bg-gray-50' },
     };
     return categories[category?.toLowerCase()] || { icon: '📦', color: 'bg-gray-50' };
   };
@@ -270,22 +371,21 @@ const InventoryDashboard = () => {
     const sorted = [...inventory];
     
     if (sortBy === 'category') {
-      // Define category order: Dairy, Produce, Meat, Pantry, Beverages, Snacks, Other
+      // Define category order: Dairy, Produce, Meat, Pantry, Bread, Other
       const categoryOrder = {
         'dairy': 1,
         'produce': 2,
         'meat': 3,
         'pantry': 4,
-        'beverages': 5,
-        'snacks': 6,
-        'other': 7
+        'bread': 5,
+        'other': 6
       };
       
       sorted.sort((a, b) => {
         const catA = (a.category || 'other').toLowerCase();
         const catB = (b.category || 'other').toLowerCase();
-        const orderA = categoryOrder[catA] || 7; // Default to 'other' if category not found
-        const orderB = categoryOrder[catB] || 7;
+        const orderA = categoryOrder[catA] || 6; // Default to 'other' if category not found
+        const orderB = categoryOrder[catB] || 6;
         return orderA - orderB;
       });
     } else if (sortBy === 'days') {
@@ -363,7 +463,7 @@ const InventoryDashboard = () => {
             <div>
               <h3 className="font-semibold text-yellow-900">Low Stock Alert</h3>
               <p className="text-sm text-yellow-800 mt-1">
-                {lowStock.length} item{lowStock.length !== 1 ? 's' : ''} running low (less than 3 days)
+                {lowStock.length} item{lowStock.length !== 1 ? 's' : ''} running low (less than {lowStockThreshold} {lowStockThreshold === 1 ? 'day' : 'days'})
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {lowStock.map((item) => (
@@ -379,6 +479,82 @@ const InventoryDashboard = () => {
           </div>
         </div>
       )}
+
+      {/* Auto-Order Controls */}
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4">
+        <div className="flex items-start gap-3">
+          <Zap className={`w-5 h-5 mt-0.5 ${autoOrderEnabled ? 'text-blue-600' : 'text-gray-400'}`} />
+          <div className="flex-1">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-gray-900">Auto-Order</h3>
+              <button
+                onClick={handleToggleAutoOrder}
+                disabled={savingPreferences}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                  autoOrderEnabled ? 'bg-blue-600' : 'bg-gray-300'
+                } ${savingPreferences ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    autoOrderEnabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* Threshold Controls - only show when enabled */}
+            {autoOrderEnabled && (
+              <div className="bg-white rounded-lg p-3 border border-blue-200">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm text-gray-700">
+                    Items predicted to run out within
+                  </p>
+                  <button
+                    onClick={async () => {
+                      const newValue = Math.max(1, autoOrderThreshold - 1);
+                      setAutoOrderThreshold(newValue);
+                      try {
+                        await preferencesAPI.update({
+                          auto_order_enabled: autoOrderEnabled,
+                          auto_order_threshold_days: newValue,
+                        });
+                      } catch (err) {
+                        console.error('Error updating threshold:', err);
+                      }
+                    }}
+                    className="w-7 h-7 flex items-center justify-center bg-gray-100 hover:bg-gray-200 text-gray-700 rounded border border-gray-300 font-semibold text-lg transition-colors"
+                  >
+                    -
+                  </button>
+                  <span className="text-sm text-gray-700 min-w-[50px] text-center font-medium">
+                    {autoOrderThreshold} {autoOrderThreshold === 1 ? 'day' : 'days'}
+                  </span>
+                  <button
+                    onClick={async () => {
+                      const newValue = Math.min(30, autoOrderThreshold + 1);
+                      setAutoOrderThreshold(newValue);
+                      try {
+                        await preferencesAPI.update({
+                          auto_order_enabled: autoOrderEnabled,
+                          auto_order_threshold_days: newValue,
+                        });
+                      } catch (err) {
+                        console.error('Error updating threshold:', err);
+                      }
+                    }}
+                    className="w-7 h-7 flex items-center justify-center bg-gray-100 hover:bg-gray-200 text-gray-700 rounded border border-gray-300 font-semibold text-lg transition-colors"
+                  >
+                    +
+                  </button>
+                  <p className="text-sm text-gray-700">
+                    will be automatically added to your cart
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* Sort Controls */}
       {inventory.length > 0 && (
@@ -443,8 +619,15 @@ const InventoryDashboard = () => {
             const hoursSinceCreation = (now - createdDate) / (1000 * 60 * 60);
             const isNewlyAdded = hoursSinceCreation <= 24;
             
+            // Calculate days since item was added
+            const daysSinceCreation = (now - createdDate) / (1000 * 60 * 60 * 24);
+            const hasEnoughHistory = daysSinceCreation >= 2;
+            
             // Determine background color
             const backgroundColor = isNewlyAdded ? 'bg-green-50' : 'bg-white';
+            
+            // Show "runs out in" if days until runout is within the low stock threshold
+            const showRunsOutIn = hasConsumption && daysUntilRunout >= 0 && daysUntilRunout <= lowStockThreshold;
             
             return (
               <div
@@ -461,28 +644,6 @@ const InventoryDashboard = () => {
                       <h3 className="text-lg font-semibold text-gray-900 mb-2">
                         Add {item.item_name} to order?
                       </h3>
-                    </div>
-
-                    {/* Action Buttons */}
-                    <div className="flex flex-col gap-2">
-                      <button
-                        onClick={() => handleDeleteAndAddToOrder(item.id, item.item_name)}
-                        className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm font-medium"
-                      >
-                        Yes, Add to Order
-                      </button>
-                      <button
-                        onClick={() => handleConfirmDelete(item.id)}
-                        className="w-full px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm font-medium"
-                      >
-                        No, Just Remove
-                      </button>
-                      <button
-                        onClick={handleCancelDelete}
-                        className="w-full px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-sm font-medium"
-                      >
-                        Cancel
-                      </button>
                     </div>
                   </div>
                 ) : isDepletingThisItem ? (
@@ -589,14 +750,14 @@ const InventoryDashboard = () => {
                 </div>
 
                 {/* Consumption rate */}
-                {item.average_daily_consumption > 0 && (
+                {hasEnoughHistory && item.average_daily_consumption > 0 && (
                   <p className="text-xs text-gray-500 mb-2">
-                    Consumes ~{parseFloat(item.average_daily_consumption).toFixed(2)} {item.unit}/day
+                    Consumed at ~{parseFloat(item.average_daily_consumption).toFixed(2)} {item.unit}/day
                   </p>
                 )}
 
-                {/* Predicted Runout - only show if there's a consumption rate */}
-                {hasConsumption && (
+                {/* Predicted Runout - only show if there's a consumption rate and runs out in 3 days or fewer */}
+                {showRunsOutIn && (
                   <div className={`flex items-center gap-2 px-3 py-2 rounded-lg ${statusColor} mb-2`}>
                     <Calendar className="w-4 h-4" />
                     <div className="flex-1">

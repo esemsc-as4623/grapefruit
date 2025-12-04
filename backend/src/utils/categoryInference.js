@@ -8,7 +8,7 @@ const CATEGORY_KEYWORDS = {
   dairy: [
     'milk', 'cheese', 'yogurt', 'butter', 'cream', 'sour cream',
     'cottage cheese', 'cheddar', 'mozzarella', 'parmesan', 'brie',
-    'half and half', 'whipped cream', 'ice cream', 'kefir'
+    'half and half', 'whipped cream', 'ice cream', 'kefir', 'egg', 'eggs'
   ],
   produce: [
     'banana', 'apple', 'orange', 'tomato', 'lettuce', 'spinach',
@@ -17,7 +17,7 @@ const CATEGORY_KEYWORDS = {
     'strawberry', 'blueberry', 'raspberry', 'grape', 'melon',
     'watermelon', 'cantaloupe', 'peach', 'pear', 'plum', 'kiwi',
     'mango', 'pineapple', 'cilantro', 'basil', 'parsley', 'mint',
-    'kale', 'arugula', 'cabbage', 'zucchini', 'squash', 'eggplant'
+    'kale', 'arugula', 'cabbage', 'zucchini', 'squash', 'eggplant', 'lemon', 'lime', 'ginger'
   ],
   meat: [
     'chicken', 'beef', 'pork', 'turkey', 'fish', 'salmon', 'tuna',
@@ -26,37 +26,21 @@ const CATEGORY_KEYWORDS = {
     'drumstick', 'wing', 'ribs', 'roast', 'tenderloin', 'patty'
   ],
   pantry: [
-    'pasta', 'rice', 'bread', 'cereal', 'flour', 'sugar', 'salt',
+    'pasta', 'rice', 'cereal', 'flour', 'sugar', 'salt',
     'pepper', 'oil', 'vinegar', 'sauce', 'soup', 'beans', 'can',
     'canned', 'jar', 'peanut butter', 'jelly', 'jam', 'honey',
     'syrup', 'oats', 'quinoa', 'lentils', 'chickpeas', 'marinara',
     'tomato sauce', 'salsa', 'ketchup', 'mustard', 'mayo', 'mayonnaise',
     'soy sauce', 'hot sauce', 'bbq sauce', 'dressing', 'spice',
-    'seasoning', 'extract', 'baking soda', 'baking powder', 'yeast'
-  ],
-  beverages: [
-    'coffee', 'tea', 'juice', 'soda', 'water', 'beer', 'wine',
-    'liquor', 'energy drink', 'sports drink', 'lemonade', 'milk',
-    'almond milk', 'oat milk', 'soy milk', 'coconut milk'
-  ],
-  snacks: [
+    'seasoning', 'extract', 'baking soda', 'baking powder', 'yeast',
+    'coffee', 'tea', 'juice', 'soda', 'water', 'wine', 'beer',
     'chips', 'crackers', 'cookies', 'candy', 'chocolate', 'nuts',
     'pretzels', 'popcorn', 'granola', 'protein bar', 'snack bar',
-    'trail mix', 'gummies', 'mints', 'gum'
+    'trail mix', 'gummies'
   ],
-  frozen: [
-    'frozen', 'ice cream', 'pizza', 'frozen pizza', 'frozen dinner',
-    'frozen vegetables', 'frozen fruit', 'popsicle', 'ice', 'waffle',
-    'burrito', 'nuggets', 'fries', 'french fries'
-  ],
-  bakery: [
+  bread: [
     'bread', 'bagel', 'muffin', 'croissant', 'donut', 'cake', 'pie',
-    'pastry', 'baguette', 'roll', 'bun', 'sourdough', 'rye', 'wheat'
-  ],
-  household: [
-    'paper towel', 'toilet paper', 'tissue', 'napkin', 'detergent',
-    'soap', 'shampoo', 'conditioner', 'toothpaste', 'cleaner', 'bleach',
-    'sponge', 'trash bag', 'aluminum foil', 'plastic wrap', 'wipes'
+    'pastry', 'baguette', 'roll', 'bun', 'sourdough', 'rye', 'wheat', 'loaf'
   ],
 };
 
@@ -69,14 +53,15 @@ const DEPARTMENT_MAPPINGS = {
   'seafood': 'meat',
   'pantry': 'pantry',
   'grocery': 'pantry',
-  'beverages': 'beverages',
-  'drinks': 'beverages',
-  'snacks': 'snacks',
-  'frozen': 'frozen',
-  'bakery': 'bakery',
-  'household': 'household',
-  'health & beauty': 'household',
-  'pharmacy': 'household',
+  'beverages': 'pantry',
+  'drinks': 'pantry',
+  'snacks': 'pantry',
+  'frozen': 'pantry',
+  'bakery': 'bread',
+  'bread': 'bread',
+  'household': 'other',
+  'health & beauty': 'other',
+  'pharmacy': 'other',
 };
 
 /**

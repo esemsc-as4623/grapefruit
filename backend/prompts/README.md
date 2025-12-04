@@ -26,6 +26,23 @@ This directory contains all system prompts used for LLM-based receipt processing
 
 ---
 
+### `cart_pricing.txt`
+**Purpose:** Suggest reasonable quantities and units for items added to cart
+
+**Used by:** `backend/src/services/cartPricer.js` → `suggestPriceAndQuantity()`
+
+**Model recommendation:** asi1-mini (ASI Cloud), Llama 3.2 3B, Phi-3 Mini
+
+**Configuration:** See `backend/src/config/llm.js` → `LLM_CONFIG.cartPricing`
+
+**Important Note:** 
+- LLM suggests: `quantity`, `unit`, `category`
+- Catalog provides: `price` (from `amazon_catalog` table via `priceService.js`)
+- This separation ensures AI-powered convenience with accurate pricing
+- See `backend/ARCHITECTURE.md` for detailed explanation
+
+---
+
 ## How to Modify Prompts
 
 1. **Edit the .txt file directly** - Changes are automatically loaded
@@ -46,6 +63,12 @@ This directory contains all system prompts used for LLM-based receipt processing
 - Clearly define unit compatibility rules
 - Provide confidence score guidelines
 - Include example matches and non-matches
+
+### For Cart Pricing:
+- Use current market prices from major retailers (Walmart, Amazon)
+- Suggest realistic household quantities
+- Provide confidence scores for pricing accuracy
+- Include reasoning for transparency
 
 ## Testing Prompts
 

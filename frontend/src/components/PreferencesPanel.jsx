@@ -1,36 +1,28 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { preferencesAPI } from '../services/api';
-import { Settings, DollarSign, Star, Save, AlertCircle } from 'lucide-react';
+import { Settings, Star, Save, AlertCircle } from 'lucide-react';
 
 const PreferencesPanel = () => {
-  const [preferences, setPreferences] = useState(null); // Store loaded preferences
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
 
   // Form state
-  const [maxSpend, setMaxSpend] = useState(250);
-  const [approvalMode, setApprovalMode] = useState('manual');
-  const [autoApproveLimit, setAutoApproveLimit] = useState(100);
   const [brandPrefs, setBrandPrefs] = useState({});
-  const [allowedVendors, setAllowedVendors] = useState(['walmart', 'amazon']);
+  const [allowedVendors, setAllowedVendors] = useState(['amazon']);
 
   // Available categories
-  const categories = ['dairy', 'produce', 'meat', 'pantry', 'beverages', 'snacks'];
+  const categories = ['dairy', 'produce', 'meat', 'pantry', 'bread', 'others'];
 
   // Load preferences
-  const loadPreferences = async () => {
+  const loadPreferences = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
       const data = await preferencesAPI.get();
-      setPreferences(data);
       
       // Set form values
-      if (data.max_spend !== undefined) setMaxSpend(data.max_spend);
-      if (data.approval_mode) setApprovalMode(data.approval_mode);
-      if (data.auto_approve_limit !== undefined) setAutoApproveLimit(data.auto_approve_limit);
       if (data.brand_prefs) setBrandPrefs(data.brand_prefs);
       if (data.allowed_vendors) setAllowedVendors(data.allowed_vendors);
     } catch (err) {
@@ -39,11 +31,11 @@ const PreferencesPanel = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadPreferences();
-  }, []);
+  }, [loadPreferences]);
 
   // Save preferences
   const handleSave = async () => {
@@ -53,9 +45,6 @@ const PreferencesPanel = () => {
       setSuccess(false);
 
       await preferencesAPI.update({
-        max_spend: parseFloat(maxSpend),
-        approval_mode: approvalMode,
-        auto_approve_limit: parseFloat(autoApproveLimit),
         brand_prefs: brandPrefs,
         allowed_vendors: allowedVendors,
       });
@@ -133,76 +122,6 @@ const PreferencesPanel = () => {
         </div>
       )}
 
-      {/* Spending Controls */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <DollarSign className="w-5 h-5 text-grapefruit-500" />
-          <h3 className="text-lg font-semibold text-gray-900">Spending Controls</h3>
-        </div>
-
-        <div className="space-y-4">
-          {/* Maximum Spend */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Maximum Monthly Spend
-            </label>
-            <div className="flex items-center gap-2">
-              <span className="text-gray-500">$</span>
-              <input
-                type="number"
-                value={maxSpend}
-                onChange={(e) => setMaxSpend(e.target.value)}
-                min="0"
-                step="10"
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-grapefruit-500 focus:border-transparent"
-              />
-            </div>
-            <p className="text-sm text-gray-500 mt-1">
-              Orders exceeding this limit will require manual approval
-            </p>
-          </div>
-
-          {/* Approval Mode */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Approval Mode
-            </label>
-            <select
-              value={approvalMode}
-              onChange={(e) => setApprovalMode(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-grapefruit-500 focus:border-transparent"
-            >
-              <option value="manual">Manual approval for all orders</option>
-              <option value="auto_under_limit">Auto-approve orders under limit</option>
-              <option value="auto_all">Auto-approve all orders</option>
-            </select>
-          </div>
-
-          {/* Auto Approve Limit */}
-          {approvalMode === 'auto_under_limit' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Auto-Approve Limit
-              </label>
-              <div className="flex items-center gap-2">
-                <span className="text-gray-500">$</span>
-                <input
-                  type="number"
-                  value={autoApproveLimit}
-                  onChange={(e) => setAutoApproveLimit(e.target.value)}
-                  min="0"
-                  step="10"
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-grapefruit-500 focus:border-transparent"
-                />
-              </div>
-              <p className="text-sm text-gray-500 mt-1">
-                Orders under this amount will be automatically approved
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
-
       {/* Vendor Preferences */}
       <div className="bg-white border border-gray-200 rounded-lg p-6">
         <div className="flex items-center gap-2 mb-4">
@@ -211,7 +130,7 @@ const PreferencesPanel = () => {
         </div>
 
         <div className="space-y-2">
-          {['walmart', 'amazon'].map((vendor) => (
+          {['amazon'].map((vendor) => (
             <label key={vendor} className="flex items-center gap-3 cursor-pointer">
               <input
                 type="checkbox"

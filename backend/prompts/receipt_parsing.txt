@@ -45,7 +45,7 @@ INSTRUCTIONS:
    - item_name: Clean product name (remove brands if generic, keep if important)
    - quantity: Numerical quantity purchased
    - unit: Unit of measurement (gallon, pound, ounce, count, etc.)
-   - department: Category if mentioned (DAIRY, PRODUCE, MEAT, etc.) or null
+   - department: Category if mentioned (DAIRY, PRODUCE, MEAT, PANTRY, BREAD, OTHERS) or null
    - confidence: Your confidence in this parsing (0.0 to 1.0)
 
 3. Handle special cases:
@@ -88,9 +88,9 @@ OUTPUT FORMAT (JSON object with items array):
 }
 
 Be conservative with confidence scores:
-- 0.9-1.0: Very clear, standard format
-- 0.7-0.9: Readable but some ambiguity
-- 0.5-0.7: Poor quality OCR or unusual format
+- 0.95-1.0: Very clear, standard format, can decipher quantity, unit, department
+- 0.7-0.95: Readable but some ambiguity (e.g. unsure of unit or department)
+- 0.5-0.7: Poor quality OCR or unusual format (e.g. unsure of quantity, unit, department)
 - Below 0.5: Highly uncertain, needs human review
 
 Return only valid JSON, no additional text.

@@ -103,6 +103,71 @@ describe('Grapefruit Backend Integration Tests', () => {
   beforeAll(async () => {
     // Ensure database connection
     await db.query('SELECT NOW()');
+    
+    // Create consumption_history table if it doesn't exist
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS consumption_history (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        user_id VARCHAR(255) NOT NULL,
+        item_name VARCHAR(255) NOT NULL,
+        quantity_before DECIMAL(10, 2) NOT NULL,
+        quantity_after DECIMAL(10, 2) NOT NULL,
+        quantity_consumed DECIMAL(10, 2) NOT NULL,
+        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        days_elapsed DECIMAL(10, 4),
+        days_in_inventory DECIMAL(10, 4),
+        event_type VARCHAR(50) NOT NULL,
+        source VARCHAR(50),
+        unit VARCHAR(50),
+        category VARCHAR(100)
+      );
+      
+      CREATE INDEX IF NOT EXISTS idx_consumption_user_item ON consumption_history(user_id, item_name);
+      CREATE INDEX IF NOT EXISTS idx_consumption_timestamp ON consumption_history(timestamp DESC);
+      CREATE INDEX IF NOT EXISTS idx_consumption_user_timestamp ON consumption_history(user_id, timestamp DESC);
+      CREATE INDEX IF NOT EXISTS idx_consumption_event_type ON consumption_history(event_type);
+    `);
+    
+    // Create cart table if it doesn't exist
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS cart (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        user_id VARCHAR(255) NOT NULL DEFAULT 'demo_user',
+        item_name VARCHAR(255) NOT NULL,
+        quantity DECIMAL(10, 2) NOT NULL CHECK (quantity > 0),
+        unit VARCHAR(50) NOT NULL,
+        category VARCHAR(100),
+        estimated_price DECIMAL(10, 2),
+        notes TEXT,
+        added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        source VARCHAR(50) DEFAULT 'manual',
+        CONSTRAINT unique_user_cart_item UNIQUE(user_id, item_name)
+      );
+      
+      CREATE INDEX IF NOT EXISTS idx_cart_user_id ON cart(user_id);
+      CREATE INDEX IF NOT EXISTS idx_cart_added_at ON cart(added_at);
+    `);
+    
+    // Create trigger function for cart timestamp updates if it doesn't exist
+    await db.query(`
+      CREATE OR REPLACE FUNCTION update_cart_timestamp()
+      RETURNS TRIGGER AS $$
+      BEGIN
+        NEW.updated_at = CURRENT_TIMESTAMP;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+    `);
+    
+    // Create trigger for cart table if it doesn't exist
+    await db.query(`
+      DROP TRIGGER IF EXISTS cart_updated_at ON cart;
+      CREATE TRIGGER cart_updated_at
+        BEFORE UPDATE ON cart
+        FOR EACH ROW
+        EXECUTE FUNCTION update_cart_timestamp();
+    `);
   });
 
   afterAll(async () => {
@@ -117,8 +182,11 @@ describe('Grapefruit Backend Integration Tests', () => {
     test('GET /health should return 200 OK', async () => {
       const response = await request(app).get('/health');
       expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('status', 'ok');
+      expect(response.body).toHaveProperty('status');
+      expect(['healthy', 'degraded']).toContain(response.body.status);
       expect(response.body).toHaveProperty('timestamp');
+      expect(response.body).toHaveProperty('database');
+      expect(response.body).toHaveProperty('migrations');
     });
   });
 
@@ -251,18 +319,8 @@ describe('Grapefruit Backend Integration Tests', () => {
     test('GET /preferences should return user preferences', async () => {
       const response = await request(app).get('/preferences');
       expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('max_spend');
-      expect(response.body).toHaveProperty('approval_mode');
       expect(response.body).toHaveProperty('brand_prefs');
-    });
-
-    test('PUT /preferences should update max_spend', async () => {
-      const response = await request(app)
-        .put('/preferences')
-        .send({ max_spend: 300.00 });
-      
-      expect(response.status).toBe(200);
-      expect(parseFloat(response.body.max_spend)).toBe(300.00);
+      expect(response.body).toHaveProperty('allowed_vendors');
     });
 
     test('PUT /preferences should update brand preferences', async () => {
@@ -303,16 +361,9 @@ describe('Grapefruit Backend Integration Tests', () => {
       expect(Array.isArray(response.body.orders)).toBe(true);
     });
 
-    test('GET /orders/pending should return pending orders', async () => {
-      const response = await request(app).get('/orders/pending');
-      expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('orders');
-    });
+    // Note: No pending orders endpoint - orders go directly from cart to placed status
 
     test('POST /orders should create new order', async () => {
-      // First set manual approval mode to prevent auto-approval
-      await request(app).put('/preferences').send({ approval_mode: 'manual' });
-      
       const order = {
         vendor: 'walmart',
         items: [
@@ -329,61 +380,29 @@ describe('Grapefruit Backend Integration Tests', () => {
       expect(response.status).toBe(201);
       expect(response.body).toHaveProperty('id');
       expect(response.body.vendor).toBe('walmart');
-      expect(response.body.status).toBe('pending');
+      expect(response.body.status).toBe('placed'); // Orders are immediately placed, not pending
       
       testOrderId = response.body.id;
     });
 
-    test('POST /orders should reject order exceeding spending cap', async () => {
-      // First set a low spending cap
-      await request(app).put('/preferences').send({ max_spend: 10.00 });
-      
-      const order = {
-        vendor: 'walmart',
-        items: [
-          { item_name: 'Expensive Item', quantity: 1, unit: 'count', price: 100.00 },
-        ],
-        subtotal: 100.00,
-        tax: 8.00,
-        shipping: 0.00,
-        total: 108.00,
-      };
-      
-      const response = await request(app).post('/orders').send(order);
-      expect(response.status).toBe(400);
-      expect(response.body.error.message).toContain('exceeds spending limit');
-      
-      // Reset spending cap
-      await request(app).put('/preferences').send({ max_spend: 250.00 });
-    });
+    // Note: No order approval step - orders go directly from cart to placed status
 
-    test('PUT /orders/:id/approve should approve pending order', async () => {
+    test('PUT /orders/:id/delivered should mark order as delivered and add to inventory', async () => {
       const response = await request(app)
-        .put(`/orders/${testOrderId}/approve`)
-        .send({ notes: 'Test approval' });
+        .put(`/orders/${testOrderId}/delivered`)
+        .send({});
       
       expect(response.status).toBe(200);
-      expect(response.body.status).toBe('approved');
-      expect(response.body).toHaveProperty('approved_at');
-    });
-
-    test('PUT /orders/:id/placed should mark order as placed', async () => {
-      const response = await request(app)
-        .put(`/orders/${testOrderId}/placed`)
-        .send({ 
-          vendor_order_id: 'TEST-ORDER-123',
-          tracking_number: 'TRACK-456',
-        });
-      
-      expect(response.status).toBe(200);
-      expect(response.body.status).toBe('placed');
-      expect(response.body.vendor_order_id).toBe('TEST-ORDER-123');
+      expect(response.body.order.status).toBe('delivered');
+      expect(response.body).toHaveProperty('inventoryUpdates');
+      expect(response.body.summary.totalItems).toBeGreaterThan(0);
     });
 
     test('GET /orders/:id should return specific order', async () => {
       const response = await request(app).get(`/orders/${testOrderId}`);
       expect(response.status).toBe(200);
       expect(response.body.id).toBe(testOrderId);
+      expect(response.body.status).toBe('delivered'); // Should be delivered from previous test
     });
   });
 

@@ -47,6 +47,24 @@ const LLM_CONFIG = {
     temperature: 0.3,                // Slightly higher for semantic matching flexibility
     maxTokens: 500,                  // Short responses for yes/no matching
     topP: 0.9,
+
+    // Response format (not all models support this)
+    responseFormat: { type: 'json_object' },
+  },
+  
+  // Model selection for cart pricing
+  cartPricing: {
+    model: process.env.ASI_MODEL || 'asi1-mini',
+    provider: 'openai-compatible',
+    endpoint: process.env.ASI_BASE_URL || 'https://inference.asicloud.cudos.org/v1',
+    apiKey: process.env.ASI_API_KEY,
+    
+    temperature: 0.2,
+    maxTokens: 400,
+    topP: 0.9,
+
+    // Response format (not all models support this)
+    responseFormat: { type: 'json_object' },
   },
   
   // Fallback configuration
@@ -153,12 +171,22 @@ function loadPrompts() {
       SYSTEM_PROMPTS.itemMatching = parts[1] ? parts[1].trim() : content;
     }
     
+    // Cart pricing prompt
+    const cartPricingPath = path.join(PROMPTS_DIR, 'cart_pricing.txt');
+    if (fs.existsSync(cartPricingPath)) {
+      const content = fs.readFileSync(cartPricingPath, 'utf-8');
+      const marker = '# SYSTEM PROMPT BELOW (copy everything after this line)';
+      const parts = content.split(marker);
+      SYSTEM_PROMPTS.cartPricing = parts[1] ? parts[1].trim() : content;
+    }
+    
     console.log('✓ Loaded system prompts:', Object.keys(SYSTEM_PROMPTS));
   } catch (error) {
     console.error('Error loading prompts:', error);
     // Use inline fallbacks if file loading fails
     SYSTEM_PROMPTS.receiptParsing = getDefaultReceiptParsingPrompt();
     SYSTEM_PROMPTS.itemMatching = getDefaultItemMatchingPrompt();
+    SYSTEM_PROMPTS.cartPricing = getDefaultCartPricingPrompt();
   }
 }
 
@@ -171,6 +199,10 @@ function getDefaultReceiptParsingPrompt() {
 
 function getDefaultItemMatchingPrompt() {
   return `You are an expert at matching grocery items. Given a parsed item and inventory items, find the best match. Consider semantic similarity and unit compatibility. Return JSON with: match_found, inventory_id, confidence, reason, suggested_action, and alternative_matches. Confidence >0.9 for exact matches, 0.6-0.9 for probable matches, <0.6 for no match.`;
+}
+
+function getDefaultCartPricingPrompt() {
+  return `You are a grocery shopping assistant. Suggest a reasonable quantity and estimated price for the given grocery item based on typical household needs and current Walmart/Amazon prices. Return JSON with: suggested_quantity, unit, estimated_price_per_unit, total_price, confidence, reasoning.`;
 }
 
 // Load prompts on module initialization
@@ -197,6 +229,14 @@ function getItemMatchingPrompt() {
 }
 
 /**
+ * Get cart pricing system prompt
+ * @returns {string} System prompt for cart pricing
+ */
+function getCartPricingPrompt() {
+  return SYSTEM_PROMPTS.cartPricing || getDefaultCartPricingPrompt();
+}
+
+/**
  * Reload prompts from disk (useful for hot-reloading during development)
  */
 function reloadPrompts() {
@@ -211,6 +251,7 @@ module.exports = {
   LLM_CONFIG,
   getReceiptParsingPrompt,
   getItemMatchingPrompt,
+  getCartPricingPrompt,
   reloadPrompts,
   SYSTEM_PROMPTS, // For debugging/testing
 };
