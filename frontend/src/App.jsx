@@ -6,7 +6,8 @@ import PreferencesPanel from './components/PreferencesPanel';
 import ManualEntry from './components/ManualEntry';
 import ReceiptUpload from './components/ReceiptUpload';
 import ReceiptReview from './components/ReceiptReview';
-import { Package, ShoppingCart, Settings, Plus } from 'lucide-react';
+import EncryptionDemo from './components/EncryptionDemo';
+import { Package, ShoppingCart, Settings, Plus, Lock } from 'lucide-react';
 
 // Navigation component
 const Navigation = () => {
@@ -17,6 +18,7 @@ const Navigation = () => {
     { path: '/orders', icon: ShoppingCart, label: 'Orders' },
     { path: '/add', icon: Plus, label: 'Add Item' },
     { path: '/preferences', icon: Settings, label: 'Preferences' },
+    { path: '/encryption', icon: Lock, label: 'Encryption Demo' },
   ];
 
   return (
@@ -153,6 +155,7 @@ function App() {
             <Route path="/orders" element={<CartReview />} />
             <Route path="/add" element={<AddItemPage />} />
             <Route path="/preferences" element={<PreferencesPanel />} />
+            <Route path="/encryption" element={<EncryptionDemo />} />
           </Routes>
         </main>
 

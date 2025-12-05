@@ -78,45 +78,52 @@ cd grapefruit
 # 2. Configure environment variables
 cp .env.example .env
 
-# 3. Edit .env file with your API keys
+# 3. Generate encryption key
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+# Copy the output and paste it as ENCRYPTION_KEY in .env
+
+# 4. Edit .env file with your API keys
 nano .env  # or use your preferred editor
 
-# REQUIRED: Add your ASI Cloud API key
+# REQUIRED: Add your ASI Cloud API key and encryption key
 # ASI_API_KEY=your-asi-cloud-api-key-here
+# ENCRYPTION_KEY=<paste-generated-key-here>
 
 # OPTIONAL: Add Google API key for enhanced OCR
 # GOOGLE_API_KEY=your-google-api-key-here
 
-# 4. Start all services (auto-initializes database with demo data)
+# 5. Start all services (auto-initializes database with demo data)
 docker compose up -d --build
 
-# 5. Verify services are running
+# 6. Verify services are running
 curl http://localhost:5000/health     # Backend API
 curl http://localhost:3000            # Frontend UI  
 curl http://localhost:8000/health     # OCR Service
 
-# 6. Check logs if any service fails
+# 7. Check logs if any service fails
 docker compose logs backend          # Backend logs
 docker compose logs ocr-service      # OCR service logs
-# Access the application
+
+# 8. Access the application
 open http://localhost:3000           # Frontend UI
 open http://localhost:5000/health    # API Health Check
 ```
 
 ### Environment Variables Explained
-
 **REQUIRED for core functionality:**
 - `ASI_API_KEY` - Powers AI receipt parsing, smart pricing, and item categorization
+- `ENCRYPTION_KEY` - Encrypts sensitive data at rest (64 hex characters, see setup instructions)
 - `DB_PASSWORD` - Database security (use strong password in production)
 
 **OPTIONAL for enhanced features:**  
 - `GOOGLE_API_KEY` - Improves OCR text extraction from receipt images
-- `ENCRYPTION_KEY` - Encrypts sensitive data (32+ character string)
+- `LLM_DEBUG=true` - Shows full AI responses in logs for troubleshooting
 - `LLM_DEBUG=true` - Shows full AI responses in logs for troubleshooting
 
-**Get your FREE API keys:**
-1. **ASI Cloud**: [asicloud.cudos.org/signup](https://asicloud.cudos.org/signup) → Dashboard → API Keys
-2. **Google Gemini**: [aistudio.google.com](https://aistudio.google.com/app/apikey) → Create API Key
+**Get your API keys and generate encryption key:**
+1. **Encryption Key** (REQUIRED): Run `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` and copy output to `.env`
+2. **ASI Cloud** (REQUIRED): [asicloud.cudos.org/signup](https://asicloud.cudos.org/signup) → Dashboard → API Keys
+3. **Google Gemini** (Optional): [aistudio.google.com](https://aistudio.google.com/app/apikey) → Create API Key
 
 ### What Gets Set Up Automatically
 

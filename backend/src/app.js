@@ -20,7 +20,15 @@ const app = express();
 // MIDDLEWARE
 // ============================================
 app.use(helmet()); // Security headers
-app.use(cors()); // Enable CORS
+
+// CORS configuration - restrict to trusted origins
+const corsOptions = {
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  credentials: true,
+  optionsSuccessStatus: 200
+};
+app.use(cors(corsOptions));
+
 app.use(express.json()); // Parse JSON bodies
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
 

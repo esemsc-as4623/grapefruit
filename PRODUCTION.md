@@ -176,15 +176,26 @@ const result = await withTransaction(async (client) => {
    - Add to `GOOGLE_API_KEY` environment variable
    - Enhances: OCR text extraction and cleaning
 
-### Encryption Key Generation
+### Encryption Key Generation (REQUIRED)
+
+The encryption key is **required** for the application to start. Generate it before deployment:
 
 ```bash
-# Generate secure encryption key
+# Generate secure encryption key (64 hex characters)
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 # Or use OpenSSL
 openssl rand -hex 32
+
+# Add to .env file:
+# ENCRYPTION_KEY=<paste-generated-key-here>
 ```
+
+**Important:** 
+- Never commit the actual key to version control
+- Store securely (password manager, secrets management system)
+- Rotate periodically in production
+- Keep backups - losing the key means losing access to encrypted data
 
 ## Deployment Instructions
 
@@ -202,7 +213,7 @@ DB_PORT=5432
 NODE_ENV=production
 BACKEND_PORT=5000
 FRONTEND_PORT=80
-ENCRYPTION_KEY=your_encryption_key_32_chars
+ENCRYPTION_KEY=<generate-with-node-crypto-randomBytes-32-hex>
 LOG_LEVEL=warn
 
 # LLM (REQUIRED)

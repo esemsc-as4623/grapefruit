@@ -2,7 +2,15 @@ const crypto = require('crypto');
 const logger = require('../utils/logger');
 
 const ALGORITHM = 'aes-256-gcm';
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex');
+
+// Validate encryption key is set
+if (!process.env.ENCRYPTION_KEY) {
+  logger.error('ENCRYPTION_KEY environment variable is not set!');
+  logger.error('Generate one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"');
+  throw new Error('ENCRYPTION_KEY is required. See .env.example for setup instructions.');
+}
+
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
 
 /**
  * Encrypt data using AES-256-GCM
