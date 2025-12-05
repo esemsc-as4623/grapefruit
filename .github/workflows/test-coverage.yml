@@ -1,5 +1,9 @@
 name: Test Coverage Report
 
+permissions:
+  pull-requests: write
+  contents: read
+
 on:
   push:
     branches: [ main, develop ]
@@ -46,7 +50,11 @@ jobs:
           PGPASSWORD: grapefruit
         run: |
           psql -h localhost -U grapefruit -d grapefruit -f database/init.sql
+          psql -h localhost -U grapefruit -d grapefruit -f database/add_cart_table.sql
+          psql -h localhost -U grapefruit -d grapefruit -f database/add_consumption_history.sql
+          psql -h localhost -U grapefruit -d grapefruit -f database/migration-auto-ordering.sql
           psql -h localhost -U grapefruit -d grapefruit -f database/seed.sql
+          psql -h localhost -U grapefruit -d grapefruit -f database/seed-grocery-catalog.sql
 
       - name: Run tests with coverage
         working-directory: ./backend
