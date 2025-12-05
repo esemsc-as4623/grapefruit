@@ -93,6 +93,7 @@ CREATE TABLE orders (
     approved_at TIMESTAMP,
     placed_at TIMESTAMP,
     delivered_at TIMESTAMP,
+    delivery_date DATE,
     
     -- Audit trail (basic for demo)
     approval_notes TEXT,
@@ -108,6 +109,7 @@ CREATE INDEX idx_orders_user_id ON orders(user_id);
 CREATE INDEX idx_orders_status ON orders(status);
 CREATE INDEX idx_orders_created_at ON orders(created_at DESC);
 CREATE INDEX idx_orders_vendor ON orders(vendor);
+CREATE INDEX idx_orders_delivery_date ON orders(delivery_date) WHERE delivery_date IS NOT NULL;
 
 -- ============================================
 -- TRIGGERS
