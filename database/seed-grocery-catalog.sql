@@ -9,12 +9,6 @@
 
 INSERT INTO amazon_catalog (id, item_name, category, price, unit, brand, in_stock) VALUES
 
--- Common Generic Items (for better fuzzy matching)
-(gen_random_uuid(), 'Milk', 'dairy', 5.99, 'gallon', 'Great Value', true),
-(gen_random_uuid(), 'Cream', 'dairy', 5.49, 'pint', 'Horizon', true),
-(gen_random_uuid(), 'Cheese', 'dairy', 6.99, 'lb', 'Tillamook', true),
-(gen_random_uuid(), 'Chocolate', 'pantry', 3.99, 'bar', 'Hershey''s', true),
-
 -- DAIRY - Expanded with multiple brands and sizes
 (gen_random_uuid(), 'Whole Milk', 'dairy', 4.99, 'gallon', 'Organic Valley', true),
 (gen_random_uuid(), 'Whole Milk', 'dairy', 3.99, 'gallon', 'Great Value', true),
@@ -32,7 +26,7 @@ INSERT INTO amazon_catalog (id, item_name, category, price, unit, brand, in_stoc
 (gen_random_uuid(), 'Butter', 'dairy', 4.99, 'lb', 'Land O Lakes', true),
 (gen_random_uuid(), 'Butter', 'dairy', 5.99, 'lb', 'Kerrygold', true),
 (gen_random_uuid(), 'Butter', 'dairy', 3.99, 'lb', 'Great Value', true),
-(gen_random_uuid(), 'Cream Cheese', 'dairy', 2.99, 'package', 'Philadelphia', true),
+(gen_random_uuid(), 'Cream Cheese', 'dairy', 2.99, 'pint', 'Philadelphia', true),
 (gen_random_uuid(), 'Whipped Cream', 'dairy', 3.49, 'can', 'Reddi-wip', true),
 
 -- Meat & Seafood - Multiple cuts and brands
@@ -105,8 +99,8 @@ INSERT INTO amazon_catalog (id, item_name, category, price, unit, brand, in_stoc
 (gen_random_uuid(), 'Tomatoes', 'produce', 2.49, 'lb', 'Roma', true),
 (gen_random_uuid(), 'Tomatoes', 'produce', 3.99, 'lb', 'Heirloom', true),
 (gen_random_uuid(), 'Cherry Tomatoes', 'produce', 2.99, 'container', 'Fresh', true),
-(gen_random_uuid(), 'Cucumbers', 'produce', 1.49, 'each', 'Fresh', true),
-(gen_random_uuid(), 'Cucumbers', 'produce', 1.99, 'each', 'English', true),
+(gen_random_uuid(), 'Cucumbers', 'produce', 1.49, 'count', 'Fresh', true),
+(gen_random_uuid(), 'Cucumbers', 'produce', 1.99, 'count', 'English', true),
 (gen_random_uuid(), 'Lettuce', 'produce', 2.49, 'count', 'Iceberg', true),
 (gen_random_uuid(), 'Lettuce', 'produce', 2.99, 'count', 'Romaine', true),
 (gen_random_uuid(), 'Spinach', 'produce', 3.99, 'bag', 'Baby Spinach', true),
@@ -132,25 +126,25 @@ INSERT INTO amazon_catalog (id, item_name, category, price, unit, brand, in_stoc
 (gen_random_uuid(), 'Mushrooms', 'produce', 4.99, 'lb', 'Shiitake', true),
 (gen_random_uuid(), 'Mushrooms', 'produce', 2.99, 'lb', 'White Button', true),
 (gen_random_uuid(), 'Zucchini', 'produce', 1.99, 'lb', 'Fresh', true),
-(gen_random_uuid(), 'Eggplant', 'produce', 2.99, 'each', 'Fresh', true),
+(gen_random_uuid(), 'Eggplant', 'produce', 2.99, 'count', 'Fresh', true),
 (gen_random_uuid(), 'Asparagus', 'produce', 4.99, 'bunch', 'Fresh', true),
 (gen_random_uuid(), 'Green Beans', 'produce', 3.49, 'lb', 'Fresh', true),
-(gen_random_uuid(), 'Avocado', 'produce', 1.99, 'each', 'Hass', true),
-(gen_random_uuid(), 'Avocado', 'produce', 2.49, 'each', 'Organic Hass', true),
+(gen_random_uuid(), 'Avocado', 'produce', 1.99, 'count', 'Hass', true),
+(gen_random_uuid(), 'Avocado', 'produce', 2.49, 'count', 'Organic Hass', true),
 (gen_random_uuid(), 'Grapes', 'produce', 3.99, 'lb', 'Red Seedless', true),
 (gen_random_uuid(), 'Grapes', 'produce', 3.99, 'lb', 'Green Seedless', true),
 (gen_random_uuid(), 'Pears', 'produce', 2.49, 'lb', 'Bartlett', true),
 (gen_random_uuid(), 'Pears', 'produce', 2.99, 'lb', 'Bosc', true),
-(gen_random_uuid(), 'Peaches', 'produce', 2.99, 'lb', 'Fresh', true),
+(gen_random_uuid(), 'Pcountes', 'produce', 2.99, 'lb', 'Fresh', true),
 (gen_random_uuid(), 'Plums', 'produce', 2.49, 'lb', 'Fresh', true),
 (gen_random_uuid(), 'Nectarines', 'produce', 2.99, 'lb', 'Fresh', true),
-(gen_random_uuid(), 'Mango', 'produce', 1.99, 'each', 'Fresh', true),
-(gen_random_uuid(), 'Pineapple', 'produce', 4.99, 'each', 'Fresh', true),
-(gen_random_uuid(), 'Watermelon', 'produce', 5.99, 'each', 'Fresh', true),
-(gen_random_uuid(), 'Cantaloupe', 'produce', 3.99, 'each', 'Fresh', true),
-(gen_random_uuid(), 'Honeydew', 'produce', 4.49, 'each', 'Fresh', true),
-(gen_random_uuid(), 'Lemons', 'produce', 0.79, 'each', 'Fresh', true),
-(gen_random_uuid(), 'Limes', 'produce', 0.69, 'each', 'Fresh', true),
+(gen_random_uuid(), 'Mango', 'produce', 1.99, 'count', 'Fresh', true),
+(gen_random_uuid(), 'Pineapple', 'produce', 4.99, 'count', 'Fresh', true),
+(gen_random_uuid(), 'Watermelon', 'produce', 5.99, 'count', 'Fresh', true),
+(gen_random_uuid(), 'Cantaloupe', 'produce', 3.99, 'count', 'Fresh', true),
+(gen_random_uuid(), 'Honeydew', 'produce', 4.49, 'count', 'Fresh', true),
+(gen_random_uuid(), 'Lemons', 'produce', 0.79, 'count', 'Fresh', true),
+(gen_random_uuid(), 'Limes', 'produce', 0.69, 'count', 'Fresh', true),
 (gen_random_uuid(), 'Cilantro', 'produce', 1.49, 'bunch', 'Fresh', true),
 (gen_random_uuid(), 'Parsley', 'produce', 1.49, 'bunch', 'Fresh', true),
 (gen_random_uuid(), 'Basil', 'produce', 2.99, 'bunch', 'Fresh', true),
@@ -352,9 +346,9 @@ INSERT INTO amazon_catalog (id, item_name, category, price, unit, brand, in_stoc
 (gen_random_uuid(), 'Iced Coffee', 'beverages', 2.99, 'bottle', 'Starbucks Frappuccino', true),
 
 -- Frozen Foods - Expanded
-(gen_random_uuid(), 'Frozen Pizza', 'frozen', 5.99, 'each', 'DiGiorno', true),
-(gen_random_uuid(), 'Frozen Pizza', 'frozen', 7.99, 'each', 'California Pizza Kitchen', true),
-(gen_random_uuid(), 'Frozen Pizza', 'frozen', 4.99, 'each', 'Tombstone', true),
+(gen_random_uuid(), 'Frozen Pizza', 'frozen', 5.99, 'count', 'DiGiorno', true),
+(gen_random_uuid(), 'Frozen Pizza', 'frozen', 7.99, 'count', 'California Pizza Kitchen', true),
+(gen_random_uuid(), 'Frozen Pizza', 'frozen', 4.99, 'count', 'Tombstone', true),
 (gen_random_uuid(), 'Ice Cream', 'frozen', 5.99, 'pint', 'Ben & Jerry''s', true),
 (gen_random_uuid(), 'Ice Cream', 'frozen', 6.99, 'pint', 'Haagen-Dazs', true),
 (gen_random_uuid(), 'Ice Cream', 'frozen', 3.99, 'container', 'Breyers', true),
@@ -493,7 +487,7 @@ INSERT INTO amazon_catalog (id, item_name, category, price, unit, brand, in_stoc
 (gen_random_uuid(), 'All-Purpose Cleaner', 'household', 4.99, 'bottle', 'Lysol', true),
 (gen_random_uuid(), 'Glass Cleaner', 'household', 4.49, 'bottle', 'Windex', true),
 (gen_random_uuid(), 'Disinfecting Wipes', 'household', 5.99, 'canister', 'Clorox', true),
-(gen_random_uuid(), 'Bleach', 'household', 4.99, 'bottle', 'Clorox', true),
+(gen_random_uuid(), 'Blcount', 'household', 4.99, 'bottle', 'Clorox', true),
 (gen_random_uuid(), 'Sponges', 'household', 4.99, 'pack', 'Scotch-Brite', true)
 
 ON CONFLICT (item_name) DO NOTHING;

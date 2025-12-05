@@ -9,7 +9,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 10000, // 10 seconds
+  timeout: 90000, // 90 seconds (OCR can take 20-30 seconds)
 });
 
 // Request interceptor for logging
@@ -107,9 +107,9 @@ export const ordersAPI = {
     return response.data;
   },
 
-  // Get pending orders
-  getPending: async () => {
-    const response = await api.get('/orders/pending');
+  // Get orders in transit (placed status)
+  getInTransit: async () => {
+    const response = await api.get('/orders?status=placed');
     return response.data;
   },
 
@@ -122,18 +122,6 @@ export const ordersAPI = {
   // Create new order
   create: async (orderData) => {
     const response = await api.post('/orders', orderData);
-    return response.data;
-  },
-
-  // Approve order
-  approve: async (id, notes = '') => {
-    const response = await api.put(`/orders/${id}/approve`, { notes });
-    return response.data;
-  },
-
-  // Reject order
-  reject: async (id, reason = '') => {
-    const response = await api.put(`/orders/${id}/reject`, { reason });
     return response.data;
   },
 
@@ -191,6 +179,19 @@ export const cartAPI = {
   // Clear entire cart
   clearCart: async () => {
     const response = await api.delete('/cart');
+    return response.data;
+  },
+};
+
+// ============================================
+// AUTO-ORDER ENDPOINTS
+// ============================================
+
+export const autoOrderAPI = {
+  // Get items in to_order queue
+  getToOrder: async (status = null) => {
+    const params = status ? `?status=${status}` : '';
+    const response = await api.get(`/auto-order/to-order${params}`);
     return response.data;
   },
 };

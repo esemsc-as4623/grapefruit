@@ -9,6 +9,22 @@ const { withTransaction } = require('../utils/transaction');
  */
 class Inventory {
   /**
+   * Format item name to title case (capitalize first letter of each word)
+   * @param {string} itemName - Original item name
+   * @returns {string} - Formatted item name
+   */
+  static formatItemName(itemName) {
+    if (!itemName || typeof itemName !== 'string') return itemName;
+    
+    return itemName
+      .toLowerCase()
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ')
+      .trim();
+  }
+
+  /**
    * Get all inventory items for a user
    */
   static async findByUser(userId = 'demo_user') {
@@ -72,9 +88,10 @@ class Inventory {
    */
   static async findByName(userId, itemName) {
     try {
+      const formattedItemName = this.formatItemName(itemName);
       const result = await db.query(
         'SELECT * FROM inventory WHERE user_id = $1 AND item_name = $2',
-        [userId, itemName]
+        [userId, formattedItemName]
       );
       return result.rows[0];
     } catch (error) {
@@ -114,6 +131,9 @@ class Inventory {
       average_daily_consumption,
     } = itemData;
 
+    // Format item name to title case
+    const formattedItemName = this.formatItemName(item_name);
+
     try {
       // Calculate predicted_runout if consumption rate is provided
       let calculatedRunout = predicted_runout;
@@ -129,7 +149,7 @@ class Inventory {
          (user_id, item_name, quantity, unit, category, predicted_runout, average_daily_consumption)
          VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING *`,
-        [user_id, item_name, quantity, unit, category, calculatedRunout, average_daily_consumption]
+        [user_id, formattedItemName, quantity, unit, category, calculatedRunout, average_daily_consumption]
       );
       return result.rows[0];
     } catch (error) {
@@ -469,22 +489,6 @@ class Orders {
   }
 
   /**
-   * Get pending orders (using view)
-   */
-  static async findPending(userId = 'demo_user') {
-    try {
-      const result = await db.query(
-        'SELECT * FROM pending_orders WHERE user_id = $1',
-        [userId]
-      );
-      return result.rows;
-    } catch (error) {
-      logger.error('Error fetching pending orders:', error);
-      throw error;
-    }
-  }
-
-  /**
    * Get order by ID
    */
   static async findById(id) {
@@ -512,61 +516,23 @@ class Orders {
       tax = 0,
       shipping = 0,
       total,
-      status = 'pending',
+      status = 'placed', // Changed from 'pending' to 'placed'
+      vendor_order_id = null,
+      tracking_number = null,
+      delivery_date = null,
     } = orderData;
 
     try {
       const result = await db.query(
         `INSERT INTO orders 
-         (user_id, vendor, items, subtotal, tax, shipping, total, status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         (user_id, vendor, items, subtotal, tax, shipping, total, status, placed_at, vendor_order_id, tracking_number, delivery_date)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP, $9, $10, $11)
          RETURNING *`,
-        [user_id, vendor, JSON.stringify(items), subtotal, tax, shipping, total, status]
+        [user_id, vendor, JSON.stringify(items), subtotal, tax, shipping, total, status, vendor_order_id, tracking_number, delivery_date]
       );
       return result.rows[0];
     } catch (error) {
       logger.error('Error creating order:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Approve order
-   */
-  static async approve(id, notes = null) {
-    try {
-      const result = await db.query(
-        `UPDATE orders 
-         SET status = 'approved', 
-             approved_at = CURRENT_TIMESTAMP,
-             approval_notes = $2
-         WHERE id = $1 AND status = 'pending'
-         RETURNING *`,
-        [id, notes]
-      );
-      return result.rows[0];
-    } catch (error) {
-      logger.error('Error approving order:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Reject order
-   */
-  static async reject(id, notes = null) {
-    try {
-      const result = await db.query(
-        `UPDATE orders 
-         SET status = 'rejected',
-             approval_notes = $2
-         WHERE id = $1 AND status = 'pending'
-         RETURNING *`,
-        [id, notes]
-      );
-      return result.rows[0];
-    } catch (error) {
-      logger.error('Error rejecting order:', error);
       throw error;
     }
   }
@@ -582,7 +548,7 @@ class Orders {
              placed_at = CURRENT_TIMESTAMP,
              vendor_order_id = $2,
              tracking_number = $3
-         WHERE id = $1 AND status = 'approved'
+         WHERE id = $1 AND status = 'placed'
          RETURNING *`,
         [id, vendorOrderId, trackingNumber]
       );
@@ -602,7 +568,7 @@ class Orders {
         `UPDATE orders 
          SET status = 'delivered',
              delivered_at = CURRENT_TIMESTAMP
-         WHERE id = $1 AND status IN ('pending', 'approved', 'placed')
+         WHERE id = $1 AND status = 'placed'
          RETURNING *`,
         [id]
       );
@@ -619,6 +585,22 @@ class Orders {
  * Handles shopping cart/list operations before items become orders
  */
 class Cart {
+  /**
+   * Format item name to title case (capitalize first letter of each word)
+   * @param {string} itemName - Original item name
+   * @returns {string} - Formatted item name
+   */
+  static formatItemName(itemName) {
+    if (!itemName || typeof itemName !== 'string') return itemName;
+    
+    return itemName
+      .toLowerCase()
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ')
+      .trim();
+  }
+
   /**
    * Get all cart items for a user
    */
@@ -656,9 +638,10 @@ class Cart {
    */
   static async findByName(userId, itemName) {
     try {
+      const formattedItemName = this.formatItemName(itemName);
       const result = await db.query(
         'SELECT * FROM cart WHERE user_id = $1 AND item_name = $2',
-        [userId, itemName]
+        [userId, formattedItemName]
       );
       return result.rows[0];
     } catch (error) {
@@ -682,9 +665,12 @@ class Cart {
       source = 'manual',
     } = itemData;
 
+    // Format item name to title case
+    const formattedItemName = this.formatItemName(item_name);
+
     try {
-      // Check if item already exists in cart
-      const existing = await this.findByName(user_id, item_name);
+      // Check if item already exists in cart (using formatted name)
+      const existing = await this.findByName(user_id, formattedItemName);
       
       if (existing) {
         // Update quantity
@@ -704,7 +690,7 @@ class Cart {
            (user_id, item_name, quantity, unit, category, estimated_price, notes, source)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
            RETURNING *`,
-          [user_id, item_name, quantity, unit, category, estimated_price, notes, source]
+          [user_id, formattedItemName, quantity, unit, category, estimated_price, notes, source]
         );
         return result.rows[0];
       }

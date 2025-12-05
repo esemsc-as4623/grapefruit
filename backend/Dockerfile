@@ -46,3 +46,34 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 
 # Start server
 CMD ["node", "src/server.js"]
+
+# Stage 3: Development (for docker-compose dev environment)
+FROM node:18-alpine AS development
+
+# Install curl for healthcheck and nodemon for hot reloading
+RUN apk add --no-cache curl
+RUN npm install -g nodemon
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files and install ALL dependencies (including dev)
+COPY package*.json ./
+RUN npm install
+
+# Create logs directory with proper permissions
+RUN mkdir -p logs && \
+    chown -R node:node /app
+
+# Use non-root user for security
+USER node
+
+# Expose port
+EXPOSE 5000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD curl -f http://localhost:5000/health || exit 1
+
+# Start with nodemon for hot reloading
+CMD ["nodemon", "--watch", "src", "--watch", "prompts", "src/server.js"]

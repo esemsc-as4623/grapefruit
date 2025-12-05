@@ -34,7 +34,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-      target: production
+      target: development
     container_name: grapefruit-backend
     restart: unless-stopped
     environment:
@@ -53,21 +53,57 @@ services:
       ASI_BASE_URL: ${ASI_BASE_URL:-https://inference.asicloud.cudos.org/v1}
       ASI_MODEL: ${ASI_MODEL:-asi1-mini}
       LLM_DEBUG: ${LLM_DEBUG:-false}
+      # OCR Service Configuration
+      OCR_SERVICE_URL: http://ocr-service:8000
       LLM_CACHE_ENABLED: ${LLM_CACHE_ENABLED:-true}
     ports:
       - "${BACKEND_PORT:-5000}:5000"
     depends_on:
       postgres:
         condition: service_healthy
+      ocr-service:
+        condition: service_healthy
     volumes:
-      # Only mount logs directory for production
+      # Mount source code for development hot reloading
+      - ./backend/src:/app/src
+      - ./backend/prompts:/app/prompts
       - ./backend/logs:/app/logs
+      - ./backend/package.json:/app/package.json
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 30s
       timeout: 10s
       start_period: 40s
       retries: 3
+    networks:
+      - grapefruit-network
+
+  # OCR Service (Python)
+  ocr-service:
+    build:
+      context: ./edge-OCR
+      dockerfile: Dockerfile
+    container_name: grapefruit-ocr
+    restart: unless-stopped
+    environment:
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+    volumes:
+      - ocr_models:/app/onnx_models
+      - ./edge-OCR/receipts:/app/receipts
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 1G
     networks:
       - grapefruit-network
 
@@ -87,6 +123,13 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    volumes:
+      # Mount source code for development hot reloading
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+      - ./frontend/package.json:/app/package.json
+      # Exclude node_modules to prevent host/container conflicts
+      - /app/node_modules
     networks:
       - grapefruit-network
 
@@ -104,6 +147,8 @@ services:
 
 volumes:
   postgres_data:
+    driver: local
+  ocr_models:
     driver: local
 
 networks:

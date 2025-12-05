@@ -39,7 +39,7 @@ MATCHING RULES:
 1. Consider semantic similarity, not just exact string matching
    - "Whole Milk" matches "Milk"
    - "Organic Eggs" matches "Eggs" (but note it's organic)
-   - "TJ Bananas" matches "Bananas"
+   - "Tesco Bananas" matches "Bananas"
 
 2. Unit compatibility is critical
    - Only match items with the same or compatible units

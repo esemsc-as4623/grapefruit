@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { inventoryAPI, simulationAPI, cartAPI, preferencesAPI } from '../services/api';
+import { inventoryAPI, simulationAPI, cartAPI, preferencesAPI, autoOrderAPI } from '../services/api';
 import { Package, AlertTriangle, TrendingDown, Calendar, RefreshCw, Trash2, ShoppingCart, Sliders, Zap } from 'lucide-react';
 
 const InventoryDashboard = () => {
@@ -12,7 +12,6 @@ const InventoryDashboard = () => {
   const [simulating, setSimulating] = useState(false);
   
   // Auto-order preferences
-  const [preferences, setPreferences] = useState(null);
   const [autoOrderEnabled, setAutoOrderEnabled] = useState(false);
   const [autoOrderThreshold, setAutoOrderThreshold] = useState(3);
   const [savingPreferences, setSavingPreferences] = useState(false);
@@ -39,28 +38,10 @@ const InventoryDashboard = () => {
   const loadPreferences = async () => {
     try {
       const data = await preferencesAPI.get();
-      setPreferences(data);
       setAutoOrderEnabled(data.auto_order_enabled || false);
       setAutoOrderThreshold(data.auto_order_threshold_days || 3);
     } catch (err) {
       console.error('Error loading preferences:', err);
-    }
-  };
-
-  // Save auto-order preferences
-  const handleSaveAutoOrderPreferences = async () => {
-    try {
-      setSavingPreferences(true);
-      await preferencesAPI.update({
-        auto_order_enabled: autoOrderEnabled,
-        auto_order_threshold_days: autoOrderThreshold,
-      });
-      await loadPreferences();
-    } catch (err) {
-      setError(err.response?.data?.error?.message || 'Failed to save auto-order settings');
-      console.error('Error saving preferences:', err);
-    } finally {
-      setSavingPreferences(false);
     }
   };
 
@@ -113,6 +94,121 @@ const InventoryDashboard = () => {
     setLowStock(filtered);
   }, [inventory, lowStockThreshold]);
 
+  // Auto-order: Add low stock items to cart when enabled
+  useEffect(() => {
+    const handleAutoOrder = async () => {
+      if (!autoOrderEnabled) return;
+      
+      console.log('[Auto-Order] Starting auto-order process (enabled)');
+      
+      try {
+        // Get current cart items to check what's already in cart
+        const cartData = await cartAPI.getAll();
+        const cartItems = cartData.items || [];
+        const cartItemNames = cartItems.map(item => item.item_name.toLowerCase());
+        
+        console.log('[Auto-Order] Current cart items:', cartItemNames);
+        
+        // Get items from both sources:
+        // 1. Frontend low stock detection
+        // 2. Backend to_order table (items detected by scheduled job)
+        
+        let itemsToAdd = [];
+        
+        // Source 1: Frontend low stock items
+        if (lowStock.length > 0) {
+          console.log('[Auto-Order] Frontend low stock items:', lowStock.map(item => ({ 
+            name: item.item_name, 
+            runout: item.predicted_runout,
+            daysUntilRunout: item.predicted_runout ? 
+              Math.ceil((new Date(item.predicted_runout) - new Date()) / (1000 * 60 * 60 * 24)) : 
+              'N/A'
+          })));
+          
+          const frontendItems = lowStock.filter(item => 
+            !cartItemNames.includes(item.item_name.toLowerCase())
+          );
+          itemsToAdd.push(...frontendItems);
+        }
+        
+        // Source 2: Backend to_order table
+        try {
+          const toOrderData = await autoOrderAPI.getToOrder('pending');
+          const toOrderItems = toOrderData.items || [];
+          
+          console.log('[Auto-Order] Backend to_order items:', toOrderItems.map(item => ({ 
+            name: item.item_name, 
+            status: item.status,
+            detected: item.detected_at
+          })));
+          
+          // Add to_order items that aren't already in cart
+          // Convert to_order format to inventory format for consistency
+          const backendItems = toOrderItems
+            .filter(item => !cartItemNames.includes(item.item_name.toLowerCase()))
+            .map(item => ({
+              item_name: item.item_name,
+              unit: item.unit,
+              category: item.category,
+              source: 'backend_to_order'
+            }));
+          
+          itemsToAdd.push(...backendItems);
+        } catch (err) {
+          console.error('[Auto-Order] Error fetching to_order items:', err);
+        }
+        
+        // Remove duplicates (same item from both sources)
+        const uniqueItemsToAdd = itemsToAdd.filter((item, index, self) => 
+          index === self.findIndex(t => t.item_name.toLowerCase() === item.item_name.toLowerCase())
+        );
+        
+        console.log('[Auto-Order] Unique items to add:', uniqueItemsToAdd.map(item => item.item_name));
+        
+        if (uniqueItemsToAdd.length === 0) {
+          console.log('[Auto-Order] No new items to add - all auto-order items already in cart');
+          return;
+        }
+        
+        // Add each missing item to cart
+        for (const item of uniqueItemsToAdd) {
+          try {
+            console.log(`[Auto-Order] Adding ${item.item_name} to cart...`);
+            
+            const itemData = {
+              item_name: item.item_name,
+              unit: item.unit,
+              category: item.category,
+              source: item.source || 'auto_order',
+              use_llm_pricing: true, // Let LLM suggest quantity and price
+            };
+            
+            console.log(`[Auto-Order] Item data:`, itemData);
+            
+            await cartAPI.addItem(itemData);
+            
+            console.log(`[Auto-Order] Successfully added ${item.item_name} to cart`);
+          } catch (err) {
+            console.error(`[Auto-Order] Failed to auto-add ${item.item_name} to cart:`, err);
+            console.error(`[Auto-Order] Error details:`, err.response?.data);
+          }
+        }
+        
+        if (uniqueItemsToAdd.length > 0) {
+          console.log(`[Auto-Order] Completed: Added ${uniqueItemsToAdd.length} items to cart`);
+        }
+        
+      } catch (err) {
+        console.error('[Auto-Order] Error in auto-order process:', err);
+      }
+    };
+    
+    // Run auto-order if enabled (regardless of lowStock count since we also check backend to_order)
+    if (autoOrderEnabled) {
+      handleAutoOrder();
+    }
+  }, [autoOrderEnabled, lowStock]);
+
   // Simulate a day
   const handleSimulateDay = async () => {
     try {
@@ -129,60 +225,11 @@ const InventoryDashboard = () => {
 
   // Delete item from inventory
   const handleDeleteItem = async (itemId, itemName) => {
-    // Show confirmation prompt
-    setConfirmingDelete({ id: itemId, name: itemName });
-  };
-
-  // Confirm deletion without adding to order
-  const handleConfirmDelete = async (itemId) => {
     try {
       await inventoryAPI.delete(itemId);
       
       // Reload inventory after deletion
       await loadInventory();
-      
-      // Clear confirmation state
-      setConfirmingDelete(null);
-    } catch (err) {
-      setError(err.response?.data?.error?.message || 'Failed to delete item');
-      console.error('Error deleting item:', err);
-    }
-  };
-
-  // Delete item and add to order
-  const handleDeleteAndAddToOrder = async (itemId, itemName) => {
-    try {
-      // Get the item details - either from confirmingDelete.item or from inventory
-      let item = confirmingDelete?.item;
-      if (!item) {
-        item = inventory.find(i => i.id === itemId);
-      }
-      if (!item) {
-        throw new Error('Item not found');
-      }
-
-      // Determine source based on confirmingDelete
-      const source = confirmingDelete?.source || 'trash';
-
-      // Add to cart - use inventory unit, let LLM suggest quantity and price
-      await cartAPI.addItem({
-        item_name: item.item_name,
-        unit: item.unit, // Use unit from inventory
-        category: item.category,
-        source: source,
-        use_llm_pricing: true, // Enable LLM pricing for quantity and price
-      });
-      
-      await inventoryAPI.delete(itemId);
-      
-      // Reload inventory after deletion
-      await loadInventory();
-      
-      // Clear confirmation state
-      setConfirmingDelete(null);
-      
-      // Show success message
-      setError(null);
     } catch (err) {
       setError(err.response?.data?.error?.message || 'Failed to delete item');
       console.error('Error deleting item:', err);
@@ -206,11 +253,6 @@ const InventoryDashboard = () => {
       setError(err.response?.data?.error?.message || 'Failed to add item to cart');
       console.error('Error adding to cart:', err);
     }
-  };
-
-  // Cancel deletion
-  const handleCancelDelete = () => {
-    setConfirmingDelete(null);
   };
 
   // Get step size based on unit
@@ -602,28 +644,6 @@ const InventoryDashboard = () => {
                       <h3 className="text-lg font-semibold text-gray-900 mb-2">
                         Add {item.item_name} to order?
                       </h3>
-                    </div>
-
-                    {/* Action Buttons */}
-                    <div className="flex flex-col gap-2">
-                      <button
-                        onClick={() => handleDeleteAndAddToOrder(item.id, item.item_name)}
-                        className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm font-medium"
-                      >
-                        Yes, Add to Order
-                      </button>
-                      <button
-                        onClick={() => handleConfirmDelete(item.id)}
-                        className="w-full px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm font-medium"
-                      >
-                        No, Just Remove
-                      </button>
-                      <button
-                        onClick={handleCancelDelete}
-                        className="w-full px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-sm font-medium"
-                      >
-                        Cancel
-                      </button>
                     </div>
                   </div>
                 ) : isDepletingThisItem ? (
