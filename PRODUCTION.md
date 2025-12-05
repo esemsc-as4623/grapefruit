@@ -9,9 +9,9 @@ This document describes the production-ready improvements made to the Grapefruit
 ### 1. Microservices Architecture
 
 #### Service Overview
-- **Backend (Node.js)**: REST API, business logic, database operations
+- **Backend (Node.js)**: REST API, business logic, database operations with encryption
 - **Frontend (React)**: User interface served via nginx
-- **Database (PostgreSQL)**: Data persistence with automated migrations
+- **Database (PostgreSQL)**: Data persistence with automated migrations and encrypted columns
 - **OCR Service (Python)**: Receipt image processing with EasyOCR and Google Gemini
 
 ### 2. Docker Multi-Stage Builds
@@ -66,8 +66,10 @@ This document describes the production-ready improvements made to the Grapefruit
 - **Transaction-wrapped**: Each migration runs in a transaction
 
 #### Migration Files:
-1. **`001_create_audit_logs.sql`**: Comprehensive audit trail table
-2. **`002_create_llm_cache.sql`**: LLM response caching table
+1. **`001_create_audit_logs.sql`**: Comprehensive audit trail table with JSONB metadata
+2. **`002_create_llm_cache.sql`**: LLM response caching table with TTL support
+
+All migrations are idempotent and can be run multiple times safely.
 
 #### Startup Sequence (`backend/src/server.js`):
 1. Test database connection (with retries and exponential backoff)
@@ -126,7 +128,54 @@ This document describes the production-ready improvements made to the Grapefruit
 - Better user experience
 - Supports offline mode for cached queries
 
-### 6. Transaction Support
+### 6. Data Encryption at Rest
+
+#### Encryption System (`backend/src/middleware/encryption.js` + `backend/src/utils/dbEncryption.js`)
+- **AES-256-GCM encryption**: Industry-standard authenticated encryption
+- **Automatic field encryption**: Transparent encryption/decryption for sensitive fields
+- **Backward compatible**: Works with existing plaintext data via `is_encrypted` flag
+- **Per-table configuration**: Different fields encrypted per table type
+
+#### Encrypted Fields:
+- **`inventory`**: `item_name`
+- **`orders`**: `items`, `tracking_number`, `vendor_order_id`
+- **`preferences`**: `brand_prefs`
+- **`cart`**: `item_name`
+
+#### Database Encryption Utilities:
+- `encryptRow()`: Encrypt sensitive fields before INSERT
+- `decryptRow()`: Decrypt fields after SELECT
+- `prepareInsert()`: Prepare data with encryption for INSERT
+- `prepareUpdate()`: Prepare data with encryption for UPDATE
+
+#### Migration Tool:
+```bash
+# Encrypt existing plaintext data
+node backend/scripts/encrypt-existing-data.js
+```
+
+### 7. Privacy-Preserving Logging
+
+#### Logger Features (`backend/src/utils/logger.js`)
+- **Automatic PII redaction**: Sensitive fields replaced with hashed identifiers
+- **IP address masking**: Last two octets masked (e.g., 192.168.xxx.xxx)
+- **Configurable sensitive fields**: Easy to add new fields to redaction list
+- **Recursive redaction**: Handles nested objects and arrays
+
+#### Redacted Fields:
+- User data: `user_id`, `email`, `phone`, `address`
+- Item data: `item_name`, `items`, `price`, `total`, `amount`
+- Security: `api_key`, `password`, `secret`, `token`, `credit_card`
+- Order data: `tracking_number`, `order_id`, `vendor_order_id`
+
+#### Usage:
+```javascript
+const logger = require('./utils/logger');
+logger.info('Processing order', { user_id: '123', item_name: 'Milk' });
+// Output: Processing order { user_id: '[REDACTED:a665a45e]', item_name: '[REDACTED:b3f9a12c]' }
+```
+
+### 8. Transaction Support
 
 #### Transaction Wrapper (`backend/src/utils/transaction.js`)
 - **`withTransaction()`**: Execute functions in a transaction
@@ -343,26 +392,44 @@ SELECT * FROM schema_migrations ORDER BY id;
 
 ## Security Considerations
 
-1. **API Keys**: Store securely, never commit to version control
+1. **Encryption at Rest**:
+   - **Encryption key**: REQUIRED 64-character hex string (32 bytes for AES-256)
+   - Generate with: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+   - Rotate regularly (every 90 days recommended)
+   - Store securely in secrets management system
+   - **CRITICAL**: Losing the key means losing access to encrypted data
+   - Use migration script to re-encrypt data after key rotation
+
+2. **API Keys**: Store securely, never commit to version control
    - Use strong key rotation policies for ASI Cloud and Google APIs
    - Monitor API usage for anomalies
-2. **Environment variables**: Never commit `.env` files
-3. **Non-root user**: All containers run as non-root
-4. **Encryption key**: Use strong 32+ character encryption key (rotate regularly)
-5. **Database credentials**: Use strong passwords in production
-6. **SSL/TLS**: Enable HTTPS in production with valid certificates
-7. **Network isolation**: Docker network isolates services
-8. **Resource limits**: Prevents resource exhaustion and DoS attacks
-9. **Rate limiting**: API protection (100 req/15min general, 10 req/15min LLM)
+   - Validate keys on application startup
+
+3. **Privacy Protection**:
+   - All sensitive fields automatically redacted in logs
+   - IP addresses masked in log output
+   - PII never stored in plaintext logs
+   - Regular log rotation and secure archival
+
+4. **Environment variables**: Never commit `.env` files
+5. **Non-root user**: All containers run as non-root
+6. **Database credentials**: Use strong passwords in production (20+ characters)
+7. **SSL/TLS**: Enable HTTPS in production with valid certificates
+8. **Network isolation**: Docker network isolates services
+9. **Resource limits**: Prevents resource exhaustion and DoS attacks
+10. **Rate limiting**: API protection (100 req/15min general, 10 req/15min LLM)
+11. **Audit trail**: Complete action history for security investigations
 
 ## Current Production Features
 
 ### ✅ Implemented
 - **Multi-stage Docker builds** with optimized production images
 - **Application-level migrations** with atomic updates
-- **Audit logging** with complete action trail
+- **AES-256-GCM encryption at rest** for sensitive database fields
+- **Privacy-preserving logging** with automatic PII redaction
+- **Audit logging** with complete action trail and JSONB metadata
 - **LLM response caching** (reduces costs by ~80%)
-- **SSL/TLS encryption** support
+- **SSL/TLS encryption** support for data in transit
 - **Rate limiting** (100 req/15min general, 10 req/15min LLM)
 - **Health monitoring** across all 4 microservices
 - **Graceful shutdown** with proper cleanup
@@ -370,6 +437,7 @@ SELECT * FROM schema_migrations ORDER BY id;
 - **Transaction support** for atomic operations
 - **Auto-ordering system** with background scheduler
 - **OCR service** with multiple engine support
+- **Comprehensive test suite** including encryption tests (21 tests)
 
 ## Performance Optimizations
 

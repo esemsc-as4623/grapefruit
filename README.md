@@ -44,8 +44,11 @@ Transform your grocery shopping experience with cutting-edge AI that learns your
 
 ### 🔧 **Production-Ready Infrastructure**
 - **Containerized Architecture**: Docker Compose orchestration with 4 microservices
-- **Database Migrations**: Automatic schema setup with 6 SQL initialization scripts
+- **Database Migrations**: Automatic schema setup with 6 SQL initialization scripts + 2 application migrations
+- **Data Encryption at Rest**: AES-256-GCM encryption for sensitive fields (item names, prices, user data)
+- **Privacy-Preserving Logging**: Automatic redaction of PII in application logs
 - **Audit Logging**: Complete trail of all user actions with queryable API
+- **LLM Response Caching**: Cost and latency reduction through intelligent response caching
 - **Rate Limiting**: API protection against abuse (100 req/15min general, 10 req/15min LLM)
 - **SSL/HTTPS Support**: Production encryption and security hardening
 
@@ -64,9 +67,18 @@ Transform your grocery shopping experience with cutting-edge AI that learns your
 Get Grapefruit running in under 3 minutes with our automated Docker setup.
 
 ### Prerequisites
-- **Docker and Docker Compose** - For containerized deployment
-- **ASI Cloud API Key** - Get free account at [asicloud.cudos.org](https://asicloud.cudos.org) (REQUIRED for AI features)
-- **Google API Key** - Get at [aistudio.google.com](https://aistudio.google.com/app/apikey) (optional, improves OCR)
+
+#### Required Software:
+- **Docker Desktop** - [Download here](https://www.docker.com/products/docker-desktop/) (includes Docker Compose)
+- **Node.js 18+** - [Download here](https://nodejs.org/) (for generating encryption key)
+- **Git** - [Download here](https://git-scm.com/downloads) (for cloning repository)
+
+#### Required API Keys:
+- **ASI Cloud API Key** - [Get FREE key](https://asicloud.cudos.org/signup) - Powers AI features (REQUIRED)
+- **Encryption Key** - Generated locally (see setup) - Encrypts data at rest (REQUIRED)
+
+#### Optional but Recommended:
+- **Google Gemini API Key** - [Get FREE key](https://aistudio.google.com/app/apikey) - Improves OCR accuracy
 
 ### Installation
 
@@ -78,52 +90,111 @@ cd grapefruit
 # 2. Configure environment variables
 cp .env.example .env
 
-# 3. Generate encryption key
+# 3. Generate encryption key (REQUIRED)
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-# Copy the output and paste it as ENCRYPTION_KEY in .env
+# You should see output like: 61ff08e490131afd25e67281b3b9e3e19e58e8f668212c6a3c94bf33fd143ded
+# Copy this entire string!
 
-# 4. Edit .env file with your API keys
-nano .env  # or use your preferred editor
+# 4. Edit .env file with your keys
+nano .env  # or use: vim .env, code .env, etc.
 
-# REQUIRED: Add your ASI Cloud API key and encryption key
-# ASI_API_KEY=your-asi-cloud-api-key-here
-# ENCRYPTION_KEY=<paste-generated-key-here>
+# 5. Add REQUIRED values to .env:
+#    - ENCRYPTION_KEY=<paste-the-64-character-hex-string-from-step-3>
+#    - ASI_API_KEY=<your-asi-cloud-api-key-from-signup>
+#
+# 5. (Optional) Add Google API key for better OCR:
+#    - GOOGLE_API_KEY=<your-google-api-key>
 
-# OPTIONAL: Add Google API key for enhanced OCR
-# GOOGLE_API_KEY=your-google-api-key-here
-
-# 5. Start all services (auto-initializes database with demo data)
+# 7. Start all services (this will take 2-3 minutes on first run)
 docker compose up -d --build
 
-# 6. Verify services are running
-curl http://localhost:5000/health     # Backend API
-curl http://localhost:3000            # Frontend UI  
-curl http://localhost:8000/health     # OCR Service
+# You should see:
+# ✅ Creating grapefruit-db ... done
+# ✅ Creating grapefruit-ocr ... done  
+# ✅ Creating grapefruit-backend ... done
+# ✅ Creating grapefruit-frontend ... done
 
-# 7. Check logs if any service fails
-docker compose logs backend          # Backend logs
-docker compose logs ocr-service      # OCR service logs
+# 8. Wait for services to be healthy (takes ~60 seconds)
+echo "Waiting for services to start..."
+sleep 60
 
-# 8. Access the application
+# 9. Verify all services are running
+docker compose ps
+# All services should show "Up (healthy)"
+
+# 10. Test the endpoints
+curl http://localhost:5000/health
+# Expected: {"status":"healthy","database":"connected","migrations":"up-to-date"}
+
+curl http://localhost:8000/health
+# Expected: {"status":"healthy","ocr_engine":"ready"}
+
+curl http://localhost:3000
+# Expected: HTML response from React app
+
+# 11. Access the application
 open http://localhost:3000           # Frontend UI
 open http://localhost:5000/health    # API Health Check
 ```
 
 ### Environment Variables Explained
-**REQUIRED for core functionality:**
-- `ASI_API_KEY` - Powers AI receipt parsing, smart pricing, and item categorization
-- `ENCRYPTION_KEY` - Encrypts sensitive data at rest (64 hex characters, see setup instructions)
-- `DB_PASSWORD` - Database security (use strong password in production)
 
-**OPTIONAL for enhanced features:**  
-- `GOOGLE_API_KEY` - Improves OCR text extraction from receipt images
-- `LLM_DEBUG=true` - Shows full AI responses in logs for troubleshooting
-- `LLM_DEBUG=true` - Shows full AI responses in logs for troubleshooting
+#### REQUIRED (Application won't start without these):
 
-**Get your API keys and generate encryption key:**
-1. **Encryption Key** (REQUIRED): Run `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` and copy output to `.env`
-2. **ASI Cloud** (REQUIRED): [asicloud.cudos.org/signup](https://asicloud.cudos.org/signup) → Dashboard → API Keys
-3. **Google Gemini** (Optional): [aistudio.google.com](https://aistudio.google.com/app/apikey) → Create API Key
+**`ENCRYPTION_KEY`** - 64-character hex string (32 bytes)
+- **Purpose:** Encrypts sensitive data (item names, prices, user info) at rest
+- **Generate:** `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+- **Example:** `61ff08e490131afd25e67281b3b9e3e19e58e8f668212c6a3c94bf33fd143ded`
+- **Error if missing:** `ENCRYPTION_KEY is required. See .env.example for setup instructions.`
+
+**`ASI_API_KEY`** - ASI Cloud API key (starts with `sk-`)
+- **Purpose:** Powers AI receipt parsing, smart pricing, and item categorization
+- **Get it:** [asicloud.cudos.org/signup](https://asicloud.cudos.org/signup) → Dashboard → API Keys
+- **Example:** `sk-L5fY4cxNqu9jRvZpVi_6jkye2D7pLGnq7jvR5bAaW-k`
+- **Error if missing:** LLM features will fail with "ASI_API_KEY not configured"
+
+**`DB_PASSWORD`** - Database password
+- **Purpose:** PostgreSQL database security
+- **Default:** `grapefruit` (change for production!)
+- **Production:** Use strong password (20+ characters, mixed case, symbols)
+
+#### OPTIONAL (Enhances features but not required):
+
+**`GOOGLE_API_KEY`** - Google Gemini API key
+- **Purpose:** Improves OCR text extraction from receipt images (~15% accuracy boost)
+- **Get it:** [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) → Create API Key
+- **Example:** `AIzaSyDYb2GFg3dXSjnqWbUUwc9ja54x1fQNrsg`
+- **Free tier:** 60 requests/minute
+
+**`LLM_DEBUG`** - Debug mode for AI responses
+- **Purpose:** Shows full LLM responses in logs for troubleshooting
+- **Values:** `true` or `false` (default: `false`)
+- **When to use:** Debugging receipt parsing issues
+
+**`LLM_CACHE_ENABLED`** - Cache LLM responses
+- **Purpose:** Reduces API costs by ~80%, speeds up repeat queries
+- **Values:** `true` or `false` (default: `true`)
+- **Recommendation:** Keep enabled for production
+
+**Get your API keys:**
+
+| Key | Required? | Get It Here | Purpose |
+|-----|-----------|-------------|----------|
+| `ENCRYPTION_KEY` | ✅ YES | Generate locally: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` | AES-256-GCM data encryption at rest |
+| `ASI_API_KEY` | ✅ YES | [asicloud.cudos.org/signup](https://asicloud.cudos.org/signup) | AI receipt parsing |
+| `GOOGLE_API_KEY` | ⚠️ Optional | [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) | Better OCR |
+
+**Quick setup:**
+```bash
+# 1. Generate encryption key
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+# Output: 61ff08e490131afd25e67281b3b9e3e19e58e8f668212c6a3c94bf33fd143ded (copy this!)
+
+# 2. Add to .env file
+ENCRYPTION_KEY=<paste-64-char-hex-string>
+ASI_API_KEY=<get-from-asicloud.cudos.org>
+GOOGLE_API_KEY=<optional-get-from-aistudio.google.com>
+```
 
 ### What Gets Set Up Automatically
 
@@ -132,6 +203,93 @@ open http://localhost:5000/health    # API Health Check
 ✅ **15 Sample Inventory Items**: Ready-to-use demo data  
 ✅ **138 Amazon Catalog Items**: Real grocery prices for smart cart features  
 ✅ **3 Background Functions**: Auto-ordering detection and processing
+
+### Troubleshooting
+
+#### ❌ "ENCRYPTION_KEY is required"
+```bash
+# Problem: Missing or invalid encryption key in .env
+# Solution:
+1. Generate key: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+2. Copy the 64-character output
+3. Add to .env: ENCRYPTION_KEY=<paste-here>
+4. Restart: docker compose restart backend
+```
+
+#### ❌ "ASI_API_KEY not configured"
+```bash
+# Problem: Missing ASI Cloud API key
+# Solution:
+1. Sign up: https://asicloud.cudos.org/signup
+2. Go to Dashboard → API Keys
+3. Create new key (starts with sk-)
+4. Add to .env: ASI_API_KEY=<your-key>
+5. Restart: docker compose restart backend
+```
+
+#### ❌ Backend service unhealthy
+```bash
+# Check logs
+docker compose logs backend
+
+# Common issues:
+# - Database not ready: Wait 60 seconds, try again
+# - Migration failed: Check database/init.sql syntax
+# - Port conflict: Change BACKEND_PORT in .env
+
+# Restart services
+docker compose down
+docker compose up -d
+```
+
+#### ❌ OCR service fails
+```bash
+# Check logs
+docker compose logs ocr-service
+
+# Common issues:
+# - Out of memory: Increase Docker memory limit to 4GB+
+# - Models not downloaded: First run takes 5-10 minutes
+# - Port conflict: Change port 8000 in docker-compose.yml
+
+# Force rebuild
+docker compose down
+docker compose build --no-cache ocr-service
+docker compose up -d
+```
+
+#### ❌ Frontend can't connect to backend
+```bash
+# Check backend is running
+curl http://localhost:5000/health
+
+# If backend is up but frontend can't connect:
+# 1. Check REACT_APP_API_URL in .env (should be http://localhost:5000)
+# 2. Rebuild frontend: docker compose build --no-cache frontend
+# 3. Restart: docker compose up -d frontend
+```
+
+#### 🔍 View all service logs
+```bash
+# All services
+docker compose logs -f
+
+# Specific service
+docker compose logs -f backend
+docker compose logs -f ocr-service
+docker compose logs -f frontend
+
+# Last 100 lines
+docker compose logs --tail=100 backend
+```
+
+#### 🧹 Clean start (if all else fails)
+```bash
+# WARNING: This deletes all data!
+docker compose down -v  # -v removes volumes (database data)
+docker system prune -a  # Remove all unused images
+docker compose up -d --build
+```
 
 ## 🎯 How To Use
 
@@ -291,15 +449,17 @@ PUT    /preferences            # Update preferences (auto-order, brands, vendors
 
 ### **Database Schema**
 
-**8 Core Tables:**
-- `inventory` - Items, quantities, consumption tracking, ML predictions
-- `cart` - Shopping cart items with AI pricing
-- `orders` - Order lifecycle from creation to delivery
-- `preferences` - User settings for brands, vendors, auto-ordering
+**10 Core Tables:**
+- `inventory` - Items, quantities, consumption tracking, ML predictions (encrypted: item_name)
+- `cart` - Shopping cart items with AI pricing (encrypted: item_name)
+- `orders` - Order lifecycle from creation to delivery (encrypted: items, tracking_number, vendor_order_id)
+- `preferences` - User settings for brands, vendors, auto-ordering (encrypted: brand_prefs)
 - `consumption_history` - Detailed consumption events for ML learning
 - `amazon_catalog` - 138 grocery items with real prices
 - `to_order` - Auto-ordering queue management
 - `background_jobs` - Scheduler execution tracking
+- `audit_logs` - Comprehensive audit trail with JSONB metadata (application migration)
+- `llm_cache` - LLM response caching for cost reduction (application migration)
 
 **3 Automated Functions:**
 - `detect_zero_inventory()` - Identifies items needing reorder
@@ -308,12 +468,19 @@ PUT    /preferences            # Update preferences (auto-order, brands, vendors
 
 ### **Security Features**
 
+- **AES-256-GCM Encryption**: Transparent encryption at rest for sensitive database fields
+  - Encrypted fields: item names, prices, tracking numbers, brand preferences
+  - Automatic encryption on INSERT/UPDATE, decryption on SELECT
+  - Backward compatible with existing plaintext data
+- **Privacy-Preserving Logging**: Automatic PII redaction in application logs
+  - Sensitive fields replaced with hashed identifiers
+  - IP address masking for privacy compliance
+  - Prevents accidental data leakage in log files
 - **Rate Limiting**: 100 req/15min general, 10 req/15min for LLM endpoints
 - **Helmet Security**: HSTS, XSS protection, content security policy
 - **Input Validation**: Joi schema validation for all API endpoints
 - **SQL Injection Protection**: Parameterized queries with pg driver
-- **Encryption Support**: Built-in field encryption for sensitive data
-- **Audit Logging**: Complete trail of all user actions
+- **Comprehensive Audit Logging**: Complete trail with JSONB metadata storage
 
 ## 🏭 Production Deployment
 
@@ -420,12 +587,16 @@ docker exec -it grapefruit-db psql -U grapefruit -d grapefruit -c "
 ```
 
 **Initialization Process:**
-1. `01-init.sql` - Core schema (inventory, orders, preferences)
+1. `01-init.sql` - Core schema (inventory, orders, preferences) with encryption support
 2. `02-add-cart.sql` - Shopping cart functionality  
 3. `03-add-consumption.sql` - ML consumption tracking
 4. `04-auto-ordering.sql` - Auto-order system (catalog, queue, jobs)
 5. `05-seed.sql` - Demo data (15 inventory items)
 6. `06-seed-grocery-catalog.sql` - Amazon catalog (138 items)
+
+**Application-Level Migrations (run on startup):**
+1. `001_create_audit_logs.sql` - Comprehensive audit trail with JSONB metadata
+2. `002_create_llm_cache.sql` - LLM response caching for cost reduction
 
 📖 **Full Production Guide**: [`PRODUCTION.md`](./PRODUCTION.md)
 
@@ -461,20 +632,25 @@ docker exec -it grapefruit-db psql -U grapefruit -d grapefruit -c "
 - Automatic inventory updates on delivery
 
 #### Database & Schema
-- **PostgreSQL with 8 tables**:
-  - `inventory` - Current inventory with consumption tracking
-  - `preferences` - User settings including auto-order configuration
-  - `orders` - Order history and pending approvals
-  - `cart` - Shopping cart management
+- **PostgreSQL with 10 tables**:
+  - `inventory` - Current inventory with consumption tracking (encrypted: item_name)
+  - `preferences` - User settings including auto-order configuration (encrypted: brand_prefs)
+  - `orders` - Order history and pending approvals (encrypted: items, tracking_number, vendor_order_id)
+  - `cart` - Shopping cart management (encrypted: item_name)
   - `consumption_history` - Historical consumption data
   - `amazon_catalog` - Mock Amazon grocery catalog (138 items)
   - `to_order` - Auto-order queue for items needing reorder
   - `background_jobs` - Job execution tracking
+  - `audit_logs` - Comprehensive audit trail with JSONB metadata
+  - `llm_cache` - LLM response caching with TTL support
 - **3 automated database functions**:
   - `detect_zero_inventory()` - Detects items at zero quantity
   - `process_to_order()` - Creates orders from the queue
   - `process_deliveries()` - Updates inventory when orders arrive
-- **Automated initialization** via Docker with 6 SQL scripts
+- **Automated initialization** via Docker:
+  - 6 SQL initialization scripts
+  - 2 application-level migrations (audit logs, LLM cache)
+  - Idempotent and race-condition safe
 
 #### Backend API (Node.js/Express)
 - **Comprehensive RESTful API** with 30+ endpoints:
@@ -557,10 +733,13 @@ docker exec -it grapefruit-db psql -U grapefruit -d grapefruit -c "
   - **Integration tests** - 37 API endpoint tests
   - **Receipt workflow tests** - 12 receipt processing tests
   - **Inventory tests** - 10 CRUD and validation tests
+  - **Encryption tests** - 21 encryption/decryption tests (AES-256-GCM)
+  - **Privacy tests** - Logger redaction and data protection tests
 - ✅ **Test utilities**:
   - Database cleanup scripts
   - Mock data generators
   - Automated CI/CD with GitHub Actions
+  - Encryption key validation
 
 #### DevOps & Infrastructure
 - ✅ **Docker containerization**:

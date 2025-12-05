@@ -57,7 +57,7 @@ jobs:
           DB_NAME: grapefruit
           DB_USER: grapefruit
           DB_PASSWORD: grapefruit
-          ENCRYPTION_KEY: test-encryption-key-32-bytes-1234567890abcdef
+          ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
           LOG_LEVEL: error
         run: npm test -- --coverage --coverageReporters=text --coverageReporters=lcov
 

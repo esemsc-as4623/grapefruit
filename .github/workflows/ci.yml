@@ -62,7 +62,7 @@ jobs:
           DB_NAME: grapefruit
           DB_USER: grapefruit
           DB_PASSWORD: grapefruit
-          ENCRYPTION_KEY: test-encryption-key-32-bytes-1234567890abcdef
+          ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
           ASI_API_KEY: test-api-key
           LLM_CACHE_ENABLED: true
           LOG_LEVEL: error
@@ -219,7 +219,7 @@ jobs:
           DB_NAME: grapefruit
           DB_USER: grapefruit
           DB_PASSWORD: grapefruit
-          ENCRYPTION_KEY: test-encryption-key-32-bytes-1234567890abcdef
+          ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
           ASI_API_KEY: test-api-key
           LLM_CACHE_ENABLED: true
           LOG_LEVEL: info
