@@ -144,13 +144,11 @@ open http://localhost:5000/health    # API Health Check
 **`ENCRYPTION_KEY`** - 64-character hex string (32 bytes)
 - **Purpose:** Encrypts sensitive data (item names, prices, user info) at rest
 - **Generate:** `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
-- **Example:** `61ff08e490131afd25e67281b3b9e3e19e58e8f668212c6a3c94bf33fd143ded`
 - **Error if missing:** `ENCRYPTION_KEY is required. See .env.example for setup instructions.`
 
 **`ASI_API_KEY`** - ASI Cloud API key (starts with `sk-`)
 - **Purpose:** Powers AI receipt parsing, smart pricing, and item categorization
 - **Get it:** [asicloud.cudos.org/signup](https://asicloud.cudos.org/signup) → Dashboard → API Keys
-- **Example:** `sk-L5fY4cxNqu9jRvZpVi_6jkye2D7pLGnq7jvR5bAaW-k`
 - **Error if missing:** LLM features will fail with "ASI_API_KEY not configured"
 
 **`DB_PASSWORD`** - Database password
@@ -163,7 +161,6 @@ open http://localhost:5000/health    # API Health Check
 **`GOOGLE_API_KEY`** - Google Gemini API key
 - **Purpose:** Improves OCR text extraction from receipt images (~15% accuracy boost)
 - **Get it:** [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) → Create API Key
-- **Example:** `AIzaSyDYb2GFg3dXSjnqWbUUwc9ja54x1fQNrsg`
 - **Free tier:** 60 requests/minute
 
 **`LLM_DEBUG`** - Debug mode for AI responses
